@@ -1,0 +1,41 @@
+{
+  "name": "nutriflow-backend",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "devnode": "node --watch src/index.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "start": "node src/index.js",
+    "db:create": "node install/createDb.cjs",
+    "db:migrate": "node install/migration.cjs all"
+  },
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/multipart": "^10.0.0",
+    "@fastify/static": "^9.1.0",
+    "@fastify/view": "^12.0.0",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.2.2",
+    "ejs": "^6.0.1",
+    "fastify": "^5.6.0",
+    "nodemailer": "^9.0.5",
+    "pg": "^8.16.3",
+    "pgobject": "^2.0.12"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "eslint": "^9.36.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "globals": "^16.4.0",
+    "nodemon": "^3.1.14",
+    "prettier": "^3.6.2"
+  }
+}

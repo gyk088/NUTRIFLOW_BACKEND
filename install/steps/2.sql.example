@@ -1,0 +1,19 @@
+-- step 2 (ПРИМЕР — переименуйте в 2.sql и отредактируйте под сущность приложения)
+-- Каждая новая доменная сущность добавляется отдельным пронумерованным шагом,
+-- а не правкой уже выполненных файлов (см. install/complitedSteps.txt).
+
+BEGIN;
+
+CREATE TABLE my_item (
+    id          uuid DEFAULT uuid_generate_v4(),
+    user_id     uuid REFERENCES my_user(id),
+    name        VARCHAR(200) NOT NULL,
+    ctime       timestamp(6) with time zone DEFAULT NOW(),
+    utime       timestamp(6) with time zone,
+
+    PRIMARY KEY (id)
+);
+
+GRANT SELECT, UPDATE, INSERT, DELETE ON TABLE my_item TO @@DBUSER@@;
+
+COMMIT;

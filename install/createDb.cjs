@@ -1,0 +1,23 @@
+require('dotenv').config({ path: `${__dirname}/../.env` });
+const { Client } = require('pg');
+
+console.log('Creating database', process.env.DB_HOST, process.env.DB_NAME);
+
+(async function run () {
+    const client = new Client({
+        user: process.env.DB_USER,
+        host: process.env.DB_HOST,
+        password: process.env.DB_PASS,
+        port: process.env.DB_PORT,
+    });
+
+    try {
+        client.connect();
+        const result = await client.query(`CREATE DATABASE ${process.env.DB_NAME} WITH OWNER = ${process.env.DB_USER}`);
+        console.log('SUCCESS', result.command)
+    } catch (e) {
+        console.error('ERROR', e.stack)
+    } finally {
+        client.end()
+    }
+})();
