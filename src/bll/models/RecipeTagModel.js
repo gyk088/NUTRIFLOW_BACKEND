@@ -1,4 +1,4 @@
-import { PgObject } from 'pgobject';
+import PgObject from 'pgobject';
 
 // Связь рецепта с тегами (junction-таблица recipe_tag) — управляется целиком
 // через RecipeService, отдельных роутов/контроллера для неё нет.

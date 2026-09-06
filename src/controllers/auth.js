@@ -19,6 +19,15 @@ export default class AuthController {
         }
     }
 
+    static async loginWithGoogle(request, reply) {
+        try {
+            const data = await AuthService.loginWithGoogle(request.body.idToken, request.ip, request.headers['user-agent']);
+            return data
+        } catch (error) {
+            reply.code(400).send(error)
+        }
+    }
+
     static async requestPasswordReset(request, reply) {
         try {
             const data = await AuthService.requestPasswordReset(request.body.email);

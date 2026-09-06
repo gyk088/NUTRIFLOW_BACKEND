@@ -1,4 +1,4 @@
-import { PgObject } from 'pgobject';
+import PgObject from 'pgobject';
 
 export default class TagModel extends PgObject {
   static get schema() {

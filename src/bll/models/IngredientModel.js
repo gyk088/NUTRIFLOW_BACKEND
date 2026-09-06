@@ -1,4 +1,4 @@
-import { PgObject } from 'pgobject';
+import PgObject from 'pgobject';
 import { NUTRIENT_FIELDS } from '../utils/nutrients.js';
 
 export default class IngredientModel extends PgObject {

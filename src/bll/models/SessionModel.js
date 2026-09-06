@@ -1,4 +1,4 @@
-import { PgObject } from 'pgobject';
+import PgObject from 'pgobject';
 import bcrypt from 'bcrypt';
 
 export default class SessionModel extends PgObject {

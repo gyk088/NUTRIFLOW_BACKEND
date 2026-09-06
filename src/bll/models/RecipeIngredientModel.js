@@ -1,4 +1,4 @@
-import { PgObject } from 'pgobject';
+import PgObject from 'pgobject';
 
 // Состав рецепта (junction-таблица recipe_ingredient) — управляется целиком
 // через RecipeService, отдельных роутов/контроллера для неё нет.

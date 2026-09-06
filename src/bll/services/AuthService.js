@@ -4,6 +4,16 @@ import { validateEmail } from '../utils/helpers.js'
 import Mailer from '../utils/Mailer.js'
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
+
+// Whichever of these are configured (web/iOS/Android OAuth clients all issue
+// tokens with the same audience-verification rules) — see .env.example.
+const GOOGLE_AUDIENCES = [
+  process.env.GOOGLE_CLIENT_ID_WEB,
+  process.env.GOOGLE_CLIENT_ID_IOS,
+  process.env.GOOGLE_CLIENT_ID_ANDROID
+].filter(Boolean);
+const googleClient = new OAuth2Client();
 
 export default class AuthService {
   static async loginByPassword(email, password, ip, user_agent) {
@@ -55,6 +65,38 @@ export default class AuthService {
     await session.save();
 
     return { session, user }
+  }
+
+  static async loginWithGoogle(idToken, ip, user_agent) {
+    if (!idToken) throw new Error('idToken is required');
+    if (GOOGLE_AUDIENCES.length === 0) throw new Error('Google sign-in is not configured on the server');
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({ idToken, audience: GOOGLE_AUDIENCES });
+      payload = ticket.getPayload();
+    } catch {
+      throw new Error('invalid Google token');
+    }
+
+    // Only Google-verified emails are trusted to match an existing account —
+    // otherwise this would let anyone claim any email address.
+    if (!payload.email || !payload.email_verified) throw new Error('Google account has no verified email');
+    const email = payload.email.toLowerCase();
+
+    let user = await UserModel.getUserByEmail(email);
+    if (!user) {
+      user = new UserModel({ name: payload.given_name, surname: payload.family_name, email });
+      await user.save();
+    } else if (user.f.active === false) {
+      throw new Error('user is blocked');
+    }
+
+    const session = new SessionModel({ user_id: user.f.id, ip, user_agent });
+    await session.generateToken();
+    await session.save();
+
+    return { session, user };
   }
 
   static async requestPasswordReset(email) {

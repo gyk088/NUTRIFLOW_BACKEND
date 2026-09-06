@@ -2,7 +2,7 @@
 // 1. переименуйте класс и table
 // 2. опишите schema (см. UserModel.js для примеров set()/default)
 // 3. добавьте таблицу в install/steps/<N>.sql (см. steps/2.sql.example)
-import { PgObject } from 'pgobject';
+import PgObject from 'pgobject';
 
 export default class ExampleModel extends PgObject {
   static get schema() {

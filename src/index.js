@@ -12,7 +12,7 @@ import fastifyStatic from '@fastify/static'
 import fastifyView from '@fastify/view'
 import ejs from 'ejs'
 import cors from '@fastify/cors'
-import { PgObject } from 'pgobject'
+import PgObject from 'pgobject';
 import { Pool } from 'pg'
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url'
