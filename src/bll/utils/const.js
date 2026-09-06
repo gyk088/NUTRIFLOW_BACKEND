@@ -3,6 +3,15 @@ export const ROLES = {
     USER: 'user'
 }
 
+// Имена справочников — совпадают со значениями name в таблице dictionary_update
+// (см. install/steps/3.sql) и используются сервисами, чтобы отмечать время
+// последнего изменения каталога.
+export const DICTIONARIES = {
+    INGREDIENT: 'ingredient',
+    RECIPE: 'recipe',
+    TAG: 'tag'
+}
+
 // Базовый URL раздачи загруженных файлов.
 // Читаем process.env лениво, внутри функции, а не в константе на верхнем
 // уровне модуля — в src/index.js роуты (а с ними и модели) импортируются
@@ -14,5 +23,6 @@ export function getFileBaseUrl() {
 
 export default {
     ROLES,
+    DICTIONARIES,
     getFileBaseUrl
 }

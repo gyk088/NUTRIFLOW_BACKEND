@@ -31,7 +31,19 @@ export default class UserModel extends PgObject {
         default: true
       },
       reset_token: {},
-      reset_token_expires: {}
+      reset_token_expires: {},
+
+      // профиль/анкета — см. install/steps/1.sql
+      sex: {},
+      age: {},
+      height_cm: {},
+      weight_kg: {},
+      target_weight_kg: {},
+      activity_level: {},
+      goal_type: {},
+      manual_calorie_target: {},
+      manual_macro_split: {},
+      preferences: {}
     }
   }
 

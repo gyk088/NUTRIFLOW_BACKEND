@@ -1,6 +1,10 @@
 import Fastify from 'fastify'
 import userRoutes from './routes/v1/users/index.js'
 import authRoutes from './routes/v1/auth/index.js'
+import ingredientRoutes from './routes/v1/ingredients/index.js'
+import recipeRoutes from './routes/v1/recipes/index.js'
+import tagRoutes from './routes/v1/tags/index.js'
+import dictionaryRoutes from './routes/v1/dictionaries/index.js'
 // import exampleRoutes from './routes/v1/_example/index.js' // раскомментируйте, переименовав папку/файлы под сущность
 
 import fastifyMultipart from '@fastify/multipart'
@@ -54,6 +58,10 @@ await fastify.register(fastifyView, {
 
 fastify.register(userRoutes, { prefix: '/api/v1/users' })
 fastify.register(authRoutes, { prefix: '/api/v1/auth' })
+fastify.register(ingredientRoutes, { prefix: '/api/v1/ingredients' })
+fastify.register(recipeRoutes, { prefix: '/api/v1/recipes' })
+fastify.register(tagRoutes, { prefix: '/api/v1/tags' })
+fastify.register(dictionaryRoutes, { prefix: '/api/v1/dictionaries' })
 // fastify.register(exampleRoutes, { prefix: '/api/v1/items' })
 
 function connectToDatabase() {
