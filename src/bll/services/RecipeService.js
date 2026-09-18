@@ -19,7 +19,7 @@ function toGrams(ingredient, quantity, unit) {
 
   const gramsPerUnit = ingredient.f.grams_per_unit?.[unit];
   if (!gramsPerUnit) {
-    throw new Error(`No gram conversion for unit "${unit}" on ingredient "${ingredient.f.name}"`);
+    throw new Error(`No gram conversion for unit "${unit}" on ingredient "${ingredient.f.name_ru}"`);
   }
   return quantity * gramsPerUnit;
 }
@@ -127,7 +127,10 @@ export default class RecipeService {
   static async update(id, updates, ingredients, tagIds) {
     const recipe = await RecipeService.getById(id);
 
-    const allowed = ['name', 'description', 'image_url', 'servings'];
+    const allowed = [
+      'name_ru', 'name_en', 'description_ru', 'description_en',
+      'image_url', 'cook_time_ru', 'cook_time_en', 'steps_ru', 'steps_en', 'servings'
+    ];
     for (const key of allowed) {
       if (updates[key] !== undefined) recipe.f[key] = updates[key];
     }

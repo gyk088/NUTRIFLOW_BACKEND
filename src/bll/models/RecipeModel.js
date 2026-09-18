@@ -6,11 +6,19 @@ export default class RecipeModel extends PgObject {
       id: {
         pk: true
       },
-      name: {
+      name_ru: {
         required: true
       },
-      description: {},
+      name_en: {
+        required: true
+      },
+      description_ru: {},
+      description_en: {},
       image_url: {},
+      cook_time_ru: {},
+      cook_time_en: {},
+      steps_ru: {},
+      steps_en: {},
       servings: {
         default: 1
       },
@@ -35,7 +43,7 @@ export default class RecipeModel extends PgObject {
   }
 
   static async search(name) {
-    return RecipeModel.select('WHERE name ILIKE $1 ORDER BY name LIMIT 50', [`%${name}%`]);
+    return RecipeModel.select('WHERE name_ru ILIKE $1 OR name_en ILIKE $1 ORDER BY name_ru LIMIT 50', [`%${name}%`]);
   }
 
   async update() {

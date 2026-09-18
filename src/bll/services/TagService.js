@@ -4,7 +4,7 @@ import { DICTIONARIES } from '../utils/const.js';
 
 export default class TagService {
   static async create(data) {
-    const existing = await TagModel.getByTypeAndName(data.type, data.name);
+    const existing = await TagModel.getByTypeAndName(data.type, data.name_ru);
     if (existing) throw new Error('Tag with this type/name already exists');
 
     const tag = new TagModel(data);
@@ -26,7 +26,7 @@ export default class TagService {
   static async update(id, updates) {
     const tag = await TagService.getById(id);
 
-    const allowed = ['type', 'name'];
+    const allowed = ['type', 'name_ru', 'name_en'];
     for (const key of allowed) {
       if (updates[key] !== undefined) tag.f[key] = updates[key];
     }

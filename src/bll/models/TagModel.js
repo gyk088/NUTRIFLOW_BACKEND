@@ -9,7 +9,10 @@ export default class TagModel extends PgObject {
       type: {
         required: true
       },
-      name: {
+      name_ru: {
+        required: true
+      },
+      name_en: {
         required: true
       }
     }
@@ -29,13 +32,13 @@ export default class TagModel extends PgObject {
     return TagModel.select('WHERE id = ANY($1)', [ids]);
   }
 
-  static async getByTypeAndName(type, name) {
-    const rows = await TagModel.select('WHERE type = $1 AND name = $2 LIMIT 1', [type, name]);
+  static async getByTypeAndName(type, nameRu) {
+    const rows = await TagModel.select('WHERE type = $1 AND name_ru = $2 LIMIT 1', [type, nameRu]);
     return rows[0];
   }
 
   static async getAll(type) {
-    if (type) return TagModel.select('WHERE type = $1 ORDER BY name', [type]);
-    return TagModel.select('ORDER BY type, name', []);
+    if (type) return TagModel.select('WHERE type = $1 ORDER BY name_ru', [type]);
+    return TagModel.select('ORDER BY type, name_ru', []);
   }
 }

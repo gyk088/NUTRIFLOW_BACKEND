@@ -1,7 +1,13 @@
 export const ROLES = {
+    SUPER_ADMIN: 'super_admin',
     ADMIN: 'admin',
     USER: 'user'
 }
+
+// super_admin имеет все права admin, плюс управление ролями пользователей
+// (см. UserService.setRole) — используйте этот список в auth([...]) везде,
+// где сейчас достаточно обычного admin.
+export const ADMIN_AND_ABOVE = [ROLES.SUPER_ADMIN, ROLES.ADMIN]
 
 // Имена справочников — совпадают со значениями name в таблице dictionary_update
 // (см. install/steps/3.sql) и используются сервисами, чтобы отмечать время
@@ -23,6 +29,7 @@ export function getFileBaseUrl() {
 
 export default {
     ROLES,
+    ADMIN_AND_ABOVE,
     DICTIONARIES,
     getFileBaseUrl
 }

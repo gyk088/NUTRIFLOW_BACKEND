@@ -18,4 +18,22 @@ export default class UserController {
             reply.code(400).send({ error: error.message });
         }
     }
+
+    static async getAll(request, reply) {
+        try {
+            const users = await UserService.getAll();
+            return users;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
+    static async setRole(request, reply) {
+        try {
+            const user = await UserService.setRole(request.user.f.id, request.params.id, request.body.role);
+            return user;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
 }

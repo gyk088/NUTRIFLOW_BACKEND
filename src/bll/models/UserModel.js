@@ -56,6 +56,10 @@ export default class UserModel extends PgObject {
     return users[0];
   }
 
+  static async getAll() {
+    return UserModel.select('ORDER BY ctime DESC', []);
+  }
+
   static async getUserByEmail(email) {
     const users = await UserModel.select("WHERE email = $1 LIMIT 1", [email]);
     return users[0];

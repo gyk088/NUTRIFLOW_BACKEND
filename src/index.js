@@ -5,6 +5,7 @@ import ingredientRoutes from './routes/v1/ingredients/index.js'
 import recipeRoutes from './routes/v1/recipes/index.js'
 import tagRoutes from './routes/v1/tags/index.js'
 import dictionaryRoutes from './routes/v1/dictionaries/index.js'
+import fileRoutes from './routes/v1/files/index.js'
 // import exampleRoutes from './routes/v1/_example/index.js' // раскомментируйте, переименовав папку/файлы под сущность
 
 import fastifyMultipart from '@fastify/multipart'
@@ -41,6 +42,7 @@ await fastify.register(cors, {
 // раздача загруженных файлов
 await fastify.register(fastifyStatic, {
   root: path.join(__dirname, '..', 'files'),
+  prefix: '/files/',
 })
 
 // статика (css/js) для серверно рендерённых публичных страниц
@@ -62,6 +64,7 @@ fastify.register(ingredientRoutes, { prefix: '/api/v1/ingredients' })
 fastify.register(recipeRoutes, { prefix: '/api/v1/recipes' })
 fastify.register(tagRoutes, { prefix: '/api/v1/tags' })
 fastify.register(dictionaryRoutes, { prefix: '/api/v1/dictionaries' })
+fastify.register(fileRoutes, { prefix: '/api/v1/files' })
 // fastify.register(exampleRoutes, { prefix: '/api/v1/items' })
 
 function connectToDatabase() {

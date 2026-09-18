@@ -1,9 +1,32 @@
 import UserModel from '../models/UserModel.js';
+import { ROLES } from '../utils/const.js';
+
+const ASSIGNABLE_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.USER];
 
 export default class UserService {
   static async getById(id) {
     const user = await UserModel.getUserById(id);
     if (!user) throw new Error('User not found');
+    return user;
+  }
+
+  static async getAll() {
+    return UserModel.getAll();
+  }
+
+  // Доступ ограничен на уровне роута (auth([ROLES.SUPER_ADMIN]) в
+  // routes/v1/users) — сюда попадают только запросы от super_admin. Менять
+  // свою собственную роль нельзя — иначе можно случайно разжаловать себя
+  // без другого super_admin, способного вернуть доступ.
+  static async setRole(actingUserId, targetUserId, role) {
+    if (!ASSIGNABLE_ROLES.includes(role)) throw new Error('invalid role');
+    if (actingUserId === targetUserId) throw new Error('cannot change your own role');
+
+    const user = await UserService.getById(targetUserId);
+    user.f.role = role;
+    user.f.utime = new Date();
+    await user.save();
+
     return user;
   }
 

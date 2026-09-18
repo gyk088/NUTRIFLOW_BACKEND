@@ -7,18 +7,14 @@ export default class IngredientModel extends PgObject {
       id: {
         pk: true
       },
-      name: {
+      name_ru: {
+        required: true
+      },
+      name_en: {
         required: true
       },
       image_url: {},
       grams_per_unit: {},
-      allergens: {
-        // pg сериализует top-level JS-массив в literal Postgres-массива
-        // ({a,b}), а не в JSON — для jsonb-колонки нужен явный JSON.stringify.
-        set(val) {
-          return Array.isArray(val) ? JSON.stringify(val) : val;
-        }
-      },
       ctime: {
         default: new Date()
       },
@@ -51,11 +47,11 @@ export default class IngredientModel extends PgObject {
   }
 
   static async search(name) {
-    return IngredientModel.select('WHERE name ILIKE $1 ORDER BY name LIMIT 50', [`%${name}%`]);
+    return IngredientModel.select('WHERE name_ru ILIKE $1 OR name_en ILIKE $1 ORDER BY name_ru LIMIT 50', [`%${name}%`]);
   }
 
   static async getAll() {
-    return IngredientModel.select('ORDER BY name', []);
+    return IngredientModel.select('ORDER BY name_ru', []);
   }
 
   async update() {
