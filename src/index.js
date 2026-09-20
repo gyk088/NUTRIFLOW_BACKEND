@@ -1,11 +1,19 @@
+import './env.js'
 import Fastify from 'fastify'
-import userRoutes from './routes/v1/users/index.js'
 import authRoutes from './routes/v1/auth/index.js'
-import ingredientRoutes from './routes/v1/ingredients/index.js'
-import recipeRoutes from './routes/v1/recipes/index.js'
-import tagRoutes from './routes/v1/tags/index.js'
-import dictionaryRoutes from './routes/v1/dictionaries/index.js'
-import fileRoutes from './routes/v1/files/index.js'
+// Для мобильного приложения — только чтение каталогов + свой профиль (auth()).
+import appUserRoutes from './routes/v1/app/users/index.js'
+import appIngredientRoutes from './routes/v1/app/ingredients/index.js'
+import appRecipeRoutes from './routes/v1/app/recipes/index.js'
+import appTagRoutes from './routes/v1/app/tags/index.js'
+import appDictionaryRoutes from './routes/v1/app/dictionaries/index.js'
+import appSyncRoutes from './routes/v1/app/sync/index.js'
+// Для админ-панели — запись контента + управление пользователями (admin+/super_admin).
+import adminUserRoutes from './routes/v1/admin/users/index.js'
+import adminIngredientRoutes from './routes/v1/admin/ingredients/index.js'
+import adminRecipeRoutes from './routes/v1/admin/recipes/index.js'
+import adminTagRoutes from './routes/v1/admin/tags/index.js'
+import adminFileRoutes from './routes/v1/admin/files/index.js'
 // import exampleRoutes from './routes/v1/_example/index.js' // раскомментируйте, переименовав папку/файлы под сущность
 
 import fastifyMultipart from '@fastify/multipart'
@@ -15,12 +23,10 @@ import ejs from 'ejs'
 import cors from '@fastify/cors'
 import PgObject from 'pgobject';
 import { Pool } from 'pg'
-import dotenv from 'dotenv';
 import { fileURLToPath } from 'url'
 import path from 'path'
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config();
 
 const fastify = Fastify({
   logger: true,
@@ -58,13 +64,20 @@ await fastify.register(fastifyView, {
   root: path.join(__dirname, 'views'),
 })
 
-fastify.register(userRoutes, { prefix: '/api/v1/users' })
 fastify.register(authRoutes, { prefix: '/api/v1/auth' })
-fastify.register(ingredientRoutes, { prefix: '/api/v1/ingredients' })
-fastify.register(recipeRoutes, { prefix: '/api/v1/recipes' })
-fastify.register(tagRoutes, { prefix: '/api/v1/tags' })
-fastify.register(dictionaryRoutes, { prefix: '/api/v1/dictionaries' })
-fastify.register(fileRoutes, { prefix: '/api/v1/files' })
+
+fastify.register(appUserRoutes, { prefix: '/api/v1/app/users' })
+fastify.register(appIngredientRoutes, { prefix: '/api/v1/app/ingredients' })
+fastify.register(appRecipeRoutes, { prefix: '/api/v1/app/recipes' })
+fastify.register(appTagRoutes, { prefix: '/api/v1/app/tags' })
+fastify.register(appDictionaryRoutes, { prefix: '/api/v1/app/dictionaries' })
+fastify.register(appSyncRoutes, { prefix: '/api/v1/app/sync' })
+
+fastify.register(adminUserRoutes, { prefix: '/api/v1/admin/users' })
+fastify.register(adminIngredientRoutes, { prefix: '/api/v1/admin/ingredients' })
+fastify.register(adminRecipeRoutes, { prefix: '/api/v1/admin/recipes' })
+fastify.register(adminTagRoutes, { prefix: '/api/v1/admin/tags' })
+fastify.register(adminFileRoutes, { prefix: '/api/v1/admin/files' })
 // fastify.register(exampleRoutes, { prefix: '/api/v1/items' })
 
 function connectToDatabase() {

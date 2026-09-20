@@ -14,7 +14,11 @@ export default class TagModel extends PgObject {
       },
       name_en: {
         required: true
-      }
+      },
+      ctime: {
+        default: new Date()
+      },
+      utime: {}
     }
   }
 
@@ -40,5 +44,17 @@ export default class TagModel extends PgObject {
   static async getAll(type) {
     if (type) return TagModel.select('WHERE type = $1 ORDER BY name_ru', [type]);
     return TagModel.select('ORDER BY type, name_ru', []);
+  }
+
+  // Для инкрементальной синхронизации каталога (см. CatalogSyncService) — новые
+  // строки ещё не имеют utime, поэтому сравниваем с COALESCE(utime, ctime).
+  static async getUpdatedSince(since) {
+    if (!since) return TagModel.getAll();
+    return TagModel.select('WHERE COALESCE(utime, ctime) > $1 ORDER BY type, name_ru', [since]);
+  }
+
+  async update() {
+    this.f.utime = new Date();
+    return super.update();
   }
 }

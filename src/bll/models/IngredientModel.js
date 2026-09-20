@@ -54,6 +54,13 @@ export default class IngredientModel extends PgObject {
     return IngredientModel.select('ORDER BY name_ru', []);
   }
 
+  // Для инкрементальной синхронизации каталога (см. CatalogSyncService) — новые
+  // строки ещё не имеют utime, поэтому сравниваем с COALESCE(utime, ctime).
+  static async getUpdatedSince(since) {
+    if (!since) return IngredientModel.getAll();
+    return IngredientModel.select('WHERE COALESCE(utime, ctime) > $1 ORDER BY name_ru', [since]);
+  }
+
   async update() {
     this.f.utime = new Date();
     return super.update();

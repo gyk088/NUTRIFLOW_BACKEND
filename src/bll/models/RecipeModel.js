@@ -46,6 +46,13 @@ export default class RecipeModel extends PgObject {
     return RecipeModel.select('WHERE name_ru ILIKE $1 OR name_en ILIKE $1 ORDER BY name_ru LIMIT 50', [`%${name}%`]);
   }
 
+  // Для инкрементальной синхронизации каталога (см. CatalogSyncService) — новые
+  // строки ещё не имеют utime, поэтому сравниваем с COALESCE(utime, ctime).
+  static async getUpdatedSince(since) {
+    if (!since) return RecipeModel.getAll();
+    return RecipeModel.select('WHERE COALESCE(utime, ctime) > $1 ORDER BY ctime DESC', [since]);
+  }
+
   async update() {
     this.f.utime = new Date();
     return super.update();
