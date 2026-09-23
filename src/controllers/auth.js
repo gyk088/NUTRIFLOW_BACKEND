@@ -28,6 +28,16 @@ export default class AuthController {
         }
     }
 
+    static async loginWithApple(request, reply) {
+        try {
+            const { identityToken, email, fullName } = request.body;
+            const data = await AuthService.loginWithApple(identityToken, email, fullName, request.ip, request.headers['user-agent']);
+            return data
+        } catch (error) {
+            reply.code(400).send(error)
+        }
+    }
+
     static async requestPasswordReset(request, reply) {
         try {
             const data = await AuthService.requestPasswordReset(request.body.email);

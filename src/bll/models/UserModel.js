@@ -23,6 +23,7 @@ export default class UserModel extends PgObject {
       role: {
         default: 'user'
       },
+      apple_id: {},
       ctime: {
         default: new Date()
       },
@@ -62,6 +63,11 @@ export default class UserModel extends PgObject {
 
   static async getUserByEmail(email) {
     const users = await UserModel.select("WHERE email = $1 LIMIT 1", [email]);
+    return users[0];
+  }
+
+  static async getUserByAppleId(appleId) {
+    const users = await UserModel.select("WHERE apple_id = $1 LIMIT 1", [appleId]);
     return users[0];
   }
 

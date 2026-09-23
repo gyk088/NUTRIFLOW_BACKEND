@@ -5,6 +5,7 @@ import Mailer from '../utils/Mailer.js'
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 // Whichever of these are configured (web/iOS/Android OAuth clients all issue
 // tokens with the same audience-verification rules) — see .env.example.
@@ -14,6 +15,9 @@ const GOOGLE_AUDIENCES = [
   process.env.GOOGLE_CLIENT_ID_ANDROID
 ].filter(Boolean);
 const googleClient = new OAuth2Client();
+
+// Кэшируется самим jose — повторные проверки не бьют по сети на каждый логин.
+const APPLE_JWKS = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 
 export default class AuthService {
   static async loginByPassword(email, password, ip, user_agent) {
@@ -87,6 +91,46 @@ export default class AuthService {
     let user = await UserModel.getUserByEmail(email);
     if (!user) {
       user = new UserModel({ name: payload.given_name, surname: payload.family_name, email });
+      await user.save();
+    } else if (user.f.active === false) {
+      throw new Error('user is blocked');
+    }
+
+    const session = new SessionModel({ user_id: user.f.id, ip, user_agent });
+    await session.generateToken();
+    await session.save();
+
+    return { session, user };
+  }
+
+  static async loginWithApple(identityToken, email, fullName, ip, user_agent) {
+    if (!identityToken) throw new Error('identityToken is required');
+    if (!process.env.APPLE_BUNDLE_ID) throw new Error('Apple Sign-In is not configured on the server');
+
+    let payload;
+    try {
+      ({ payload } = await jwtVerify(identityToken, APPLE_JWKS, {
+        issuer: 'https://appleid.apple.com',
+        audience: process.env.APPLE_BUNDLE_ID
+      }));
+    } catch {
+      throw new Error('invalid Apple token');
+    }
+
+    const appleId = payload.sub;
+    if (!appleId) throw new Error('Apple token has no sub');
+
+    let user = await UserModel.getUserByAppleId(appleId);
+
+    if (!user) {
+      // email/fullName приходят от клиента только при самом первом входе —
+      // при повторных Apple их не присылает, поэтому матчим по sub, а не email.
+      user = new UserModel({
+        apple_id: appleId,
+        email: email?.toLowerCase(),
+        name: fullName?.givenName,
+        surname: fullName?.familyName
+      });
       await user.save();
     } else if (user.f.active === false) {
       throw new Error('user is blocked');

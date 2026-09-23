@@ -6,19 +6,7 @@ export default class RecipeModel extends PgObject {
       id: {
         pk: true
       },
-      name_ru: {
-        required: true
-      },
-      name_en: {
-        required: true
-      },
-      description_ru: {},
-      description_en: {},
       image_url: {},
-      cook_time_ru: {},
-      cook_time_en: {},
-      steps_ru: {},
-      steps_en: {},
       servings: {
         default: 1
       },
@@ -38,12 +26,13 @@ export default class RecipeModel extends PgObject {
     return rows[0];
   }
 
-  static async getAll() {
-    return RecipeModel.select('ORDER BY ctime DESC', []);
+  static async getByIds(ids) {
+    if (!ids.length) return [];
+    return RecipeModel.select('WHERE id = ANY($1)', [ids]);
   }
 
-  static async search(name) {
-    return RecipeModel.select('WHERE name_ru ILIKE $1 OR name_en ILIKE $1 ORDER BY name_ru LIMIT 50', [`%${name}%`]);
+  static async getAll() {
+    return RecipeModel.select('ORDER BY ctime DESC', []);
   }
 
   // Для инкрементальной синхронизации каталога (см. CatalogSyncService) — новые

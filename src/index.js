@@ -5,14 +5,18 @@ import authRoutes from './routes/v1/auth/index.js'
 import appUserRoutes from './routes/v1/app/users/index.js'
 import appIngredientRoutes from './routes/v1/app/ingredients/index.js'
 import appRecipeRoutes from './routes/v1/app/recipes/index.js'
+import appArticleRoutes from './routes/v1/app/articles/index.js'
 import appTagRoutes from './routes/v1/app/tags/index.js'
+import appLanguageRoutes from './routes/v1/app/languages/index.js'
 import appDictionaryRoutes from './routes/v1/app/dictionaries/index.js'
 import appSyncRoutes from './routes/v1/app/sync/index.js'
 // Для админ-панели — запись контента + управление пользователями (admin+/super_admin).
 import adminUserRoutes from './routes/v1/admin/users/index.js'
 import adminIngredientRoutes from './routes/v1/admin/ingredients/index.js'
 import adminRecipeRoutes from './routes/v1/admin/recipes/index.js'
+import adminArticleRoutes from './routes/v1/admin/articles/index.js'
 import adminTagRoutes from './routes/v1/admin/tags/index.js'
+import adminLanguageRoutes from './routes/v1/admin/languages/index.js'
 import adminFileRoutes from './routes/v1/admin/files/index.js'
 // import exampleRoutes from './routes/v1/_example/index.js' // раскомментируйте, переименовав папку/файлы под сущность
 
@@ -69,14 +73,18 @@ fastify.register(authRoutes, { prefix: '/api/v1/auth' })
 fastify.register(appUserRoutes, { prefix: '/api/v1/app/users' })
 fastify.register(appIngredientRoutes, { prefix: '/api/v1/app/ingredients' })
 fastify.register(appRecipeRoutes, { prefix: '/api/v1/app/recipes' })
+fastify.register(appArticleRoutes, { prefix: '/api/v1/app/articles' })
 fastify.register(appTagRoutes, { prefix: '/api/v1/app/tags' })
+fastify.register(appLanguageRoutes, { prefix: '/api/v1/app/languages' })
 fastify.register(appDictionaryRoutes, { prefix: '/api/v1/app/dictionaries' })
 fastify.register(appSyncRoutes, { prefix: '/api/v1/app/sync' })
 
 fastify.register(adminUserRoutes, { prefix: '/api/v1/admin/users' })
 fastify.register(adminIngredientRoutes, { prefix: '/api/v1/admin/ingredients' })
 fastify.register(adminRecipeRoutes, { prefix: '/api/v1/admin/recipes' })
+fastify.register(adminArticleRoutes, { prefix: '/api/v1/admin/articles' })
 fastify.register(adminTagRoutes, { prefix: '/api/v1/admin/tags' })
+fastify.register(adminLanguageRoutes, { prefix: '/api/v1/admin/languages' })
 fastify.register(adminFileRoutes, { prefix: '/api/v1/admin/files' })
 // fastify.register(exampleRoutes, { prefix: '/api/v1/items' })
 

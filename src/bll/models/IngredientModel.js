@@ -7,12 +7,6 @@ export default class IngredientModel extends PgObject {
       id: {
         pk: true
       },
-      name_ru: {
-        required: true
-      },
-      name_en: {
-        required: true
-      },
       image_url: {},
       grams_per_unit: {},
       ctime: {
@@ -46,19 +40,15 @@ export default class IngredientModel extends PgObject {
     return IngredientModel.select('WHERE id = ANY($1)', [ids]);
   }
 
-  static async search(name) {
-    return IngredientModel.select('WHERE name_ru ILIKE $1 OR name_en ILIKE $1 ORDER BY name_ru LIMIT 50', [`%${name}%`]);
-  }
-
   static async getAll() {
-    return IngredientModel.select('ORDER BY name_ru', []);
+    return IngredientModel.select('ORDER BY ctime DESC', []);
   }
 
   // Для инкрементальной синхронизации каталога (см. CatalogSyncService) — новые
   // строки ещё не имеют utime, поэтому сравниваем с COALESCE(utime, ctime).
   static async getUpdatedSince(since) {
     if (!since) return IngredientModel.getAll();
-    return IngredientModel.select('WHERE COALESCE(utime, ctime) > $1 ORDER BY name_ru', [since]);
+    return IngredientModel.select('WHERE COALESCE(utime, ctime) > $1 ORDER BY ctime DESC', [since]);
   }
 
   async update() {
