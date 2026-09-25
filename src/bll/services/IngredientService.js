@@ -4,11 +4,23 @@ import IngredientTagModel from '../models/IngredientTagModel.js';
 import TagService from './TagService.js';
 import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
 import LanguageService from './LanguageService.js';
-import { pickTranslation } from '../utils/translation.js';
+import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
 import { NUTRIENT_FIELDS } from '../utils/nutrients.js';
-import { DICTIONARIES } from '../utils/const.js';
+import { DICTIONARIES, MEASURE_UNITS, UNIT_TO_GRAMS } from '../utils/const.js';
 
-const UPDATABLE_FIELDS = ['image_url', 'grams_per_unit', ...NUTRIENT_FIELDS];
+const UPDATABLE_FIELDS = ['image_url', 'grams_per_unit', 'default_unit', ...NUTRIENT_FIELDS];
+
+// Единица по умолчанию должна быть известной, а для не-весовой (piece, tbsp...)
+// нужен вес в граммах в grams_per_unit — иначе КБЖУ рецепта не посчитать.
+function validateUnit(defaultUnit, gramsPerUnit) {
+  if (defaultUnit === undefined || defaultUnit === null) return;
+  if (!MEASURE_UNITS.includes(defaultUnit)) {
+    throw new Error(`default_unit must be one of: ${MEASURE_UNITS.join(', ')}`);
+  }
+  if (UNIT_TO_GRAMS[defaultUnit] === undefined && !Number(gramsPerUnit?.[defaultUnit])) {
+    throw new Error(`grams_per_unit must define the weight in grams of one "${defaultUnit}"`);
+  }
+}
 
 async function saveTags(ingredientId, tagIds) {
   for (const tagId of tagIds) {
@@ -20,6 +32,7 @@ async function saveTags(ingredientId, tagIds) {
 export default class IngredientService {
   // languageCode/name — язык и название первого перевода, создаваемого вместе с ингредиентом.
   static async create(languageCode, name, data, tagIds = []) {
+    validateUnit(data.default_unit, data.grams_per_unit);
     const ingredient = new IngredientModel(data);
     await ingredient.save();
 
@@ -47,7 +60,7 @@ export default class IngredientService {
   static async getFullById(id, lang) {
     const ingredient = await IngredientService.getById(id);
     const translations = await IngredientTranslationModel.getByIngredientId(id);
-    if (!translations.length) throw new Error('Ingredient has no translations');
+    if (!translations.length) throw new MissingTranslationsError('Ingredient has no translations');
 
     const defaultLang = await LanguageService.getDefaultCode();
     const translation = pickTranslation(translations, lang, defaultLang);
@@ -82,7 +95,7 @@ export default class IngredientService {
     if (search) ids = await IngredientTranslationModel.searchIngredientIds(search);
 
     const ingredients = ids ? await IngredientModel.getByIds(ids) : await IngredientModel.getAll();
-    return Promise.all(ingredients.map(ingredient => IngredientService.getFullById(ingredient.f.id, lang)));
+    return resolveAll(ingredients, ingredient => IngredientService.getFullById(ingredient.f.id, lang));
   }
 
   static async update(id, updates, tagIds) {
@@ -91,6 +104,7 @@ export default class IngredientService {
     for (const key of UPDATABLE_FIELDS) {
       if (updates[key] !== undefined) ingredient.f[key] = updates[key];
     }
+    validateUnit(ingredient.f.default_unit, ingredient.f.grams_per_unit);
     await ingredient.save();
 
     if (tagIds) {

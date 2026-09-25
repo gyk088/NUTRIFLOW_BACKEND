@@ -4,7 +4,7 @@ import ArticleTagModel from '../models/ArticleTagModel.js';
 import ArticleFavoriteModel from '../models/ArticleFavoriteModel.js';
 import TagService from './TagService.js';
 import LanguageService from './LanguageService.js';
-import { pickTranslation } from '../utils/translation.js';
+import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
 
 async function saveTags(articleId, tagIds) {
   for (const tagId of tagIds) {
@@ -45,7 +45,7 @@ export default class ArticleService {
     const article = await ArticleService.getById(id);
 
     const translations = await ArticleTranslationModel.getByArticleId(id);
-    if (!translations.length) throw new Error('Article has no translations');
+    if (!translations.length) throw new MissingTranslationsError('Article has no translations');
     const defaultLang = await LanguageService.getDefaultCode();
     const translation = pickTranslation(translations, lang, defaultLang);
 
@@ -85,7 +85,7 @@ export default class ArticleService {
     if (search) ids = await ArticleTranslationModel.searchArticleIds(search);
 
     const articles = ids ? await ArticleModel.getByIds(ids) : await ArticleModel.getAll();
-    return Promise.all(articles.map(article => ArticleService.getFullById(article.f.id, lang, userId)));
+    return resolveAll(articles, article => ArticleService.getFullById(article.f.id, lang, userId));
   }
 
   static async addTranslation(articleId, languageCode, { title, content }) {
@@ -155,6 +155,6 @@ export default class ArticleService {
 
   static async getFavorites(userId, lang) {
     const favorites = await ArticleFavoriteModel.getByUserId(userId);
-    return Promise.all(favorites.map(f => ArticleService.getFullById(f.f.article_id, lang, userId)));
+    return resolveAll(favorites, f => ArticleService.getFullById(f.f.article_id, lang, userId));
   }
 }

@@ -19,6 +19,24 @@ export default class UserController {
         }
     }
 
+    static async getHistory(request, reply) {
+        try {
+            const history = await UserService.getHistory(request.user.f.id, request.query.field);
+            return history;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
+    static async getWeightHistory(request, reply) {
+        try {
+            const history = await UserService.getWeightHistory(request.user.f.id);
+            return history;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
     static async getAll(request, reply) {
         try {
             const users = await UserService.getAll();

@@ -9,6 +9,9 @@ export default class IngredientModel extends PgObject {
       },
       image_url: {},
       grams_per_unit: {},
+      default_unit: {
+        default: 'g'
+      },
       ctime: {
         default: new Date()
       },

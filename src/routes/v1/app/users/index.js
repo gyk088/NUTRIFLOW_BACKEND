@@ -6,4 +6,6 @@ import auth from '../../../../hooks/preHendler.js';
 export default async function appUserRoutes(fastify, _options) {
     fastify.get('/me', {preHandler: [auth()]}, UserController.getMe)
     fastify.put('/me', {preHandler: [auth()]}, UserController.updateMe)
+    fastify.get('/me/history', {preHandler: [auth()]}, UserController.getHistory)
+    fastify.get('/me/weight-history', {preHandler: [auth()]}, UserController.getWeightHistory)
 }

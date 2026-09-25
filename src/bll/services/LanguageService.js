@@ -12,8 +12,8 @@ export default class LanguageService {
   // Используется всеми *Service как fallback-язык, когда для сущности нет
   // перевода на запрошенный клиентом язык.
   static async getDefaultCode() {
-    const language = await LanguageModel.getDefault();
-    if (!language) throw new Error('No default language configured');
+    const language = (await LanguageModel.getDefault()) || (await LanguageModel.getAll())[0];
+    if (!language) throw new Error('No languages configured');
     return language.f.code;
   }
 

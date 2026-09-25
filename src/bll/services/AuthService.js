@@ -89,6 +89,7 @@ export default class AuthService {
     const email = payload.email.toLowerCase();
 
     let user = await UserModel.getUserByEmail(email);
+    const isNewUser = !user;
     if (!user) {
       user = new UserModel({ name: payload.given_name, surname: payload.family_name, email });
       await user.save();
@@ -100,7 +101,7 @@ export default class AuthService {
     await session.generateToken();
     await session.save();
 
-    return { session, user };
+    return { session, user, isNewUser };
   }
 
   static async loginWithApple(identityToken, email, fullName, ip, user_agent) {
@@ -121,6 +122,7 @@ export default class AuthService {
     if (!appleId) throw new Error('Apple token has no sub');
 
     let user = await UserModel.getUserByAppleId(appleId);
+    const isNewUser = !user;
 
     if (!user) {
       // email/fullName приходят от клиента только при самом первом входе —
@@ -140,7 +142,7 @@ export default class AuthService {
     await session.generateToken();
     await session.save();
 
-    return { session, user };
+    return { session, user, isNewUser };
   }
 
   static async requestPasswordReset(email) {

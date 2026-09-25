@@ -7,11 +7,9 @@ import IngredientTranslationModel from '../models/IngredientTranslationModel.js'
 import TagService from './TagService.js';
 import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
 import LanguageService from './LanguageService.js';
-import { pickTranslation } from '../utils/translation.js';
+import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
 import { NUTRIENT_FIELDS } from '../utils/nutrients.js';
-import { DICTIONARIES } from '../utils/const.js';
-
-const UNIT_TO_GRAMS = { g: 1, kg: 1000, ml: 1, l: 1000 };
+import { DICTIONARIES, UNIT_TO_GRAMS } from '../utils/const.js';
 
 // Переводит quantity/unit строки состава в граммы. Для весовых/объёмных
 // единиц — прямой коэффициент, для штучных (piece, tbsp...) — через
@@ -127,7 +125,7 @@ export default class RecipeService {
     const recipe = await RecipeService.getById(id);
 
     const translations = await RecipeTranslationModel.getByRecipeId(id);
-    if (!translations.length) throw new Error('Recipe has no translations');
+    if (!translations.length) throw new MissingTranslationsError('Recipe has no translations');
     const defaultLang = await LanguageService.getDefaultCode();
     const translation = pickTranslation(translations, lang, defaultLang);
 
@@ -205,7 +203,7 @@ export default class RecipeService {
     if (search) ids = await RecipeTranslationModel.searchRecipeIds(search);
 
     const recipes = ids ? await RecipeModel.getByIds(ids) : await RecipeModel.getAll();
-    return Promise.all(recipes.map(recipe => RecipeService.getFullById(recipe.f.id, lang)));
+    return resolveAll(recipes, recipe => RecipeService.getFullById(recipe.f.id, lang));
   }
 
   static async update(id, baseUpdates, ingredients, tagIds) {

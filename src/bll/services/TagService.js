@@ -2,7 +2,7 @@ import TagModel from '../models/TagModel.js';
 import TagTranslationModel from '../models/TagTranslationModel.js';
 import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
 import LanguageService from './LanguageService.js';
-import { pickTranslation } from '../utils/translation.js';
+import { pickTranslation, MissingTranslationsError } from '../utils/translation.js';
 import { DICTIONARIES } from '../utils/const.js';
 
 function toResolved(tag, translation, allTranslations) {
@@ -48,7 +48,7 @@ export default class TagService {
   static async getFullById(id, lang) {
     const tag = await TagService.getById(id);
     const translations = await TagTranslationModel.getByTagId(id);
-    if (!translations.length) throw new Error('Tag has no translations');
+    if (!translations.length) throw new MissingTranslationsError('Tag has no translations');
 
     const defaultLang = await LanguageService.getDefaultCode();
     const translation = pickTranslation(translations, lang, defaultLang);
@@ -72,8 +72,10 @@ export default class TagService {
       translationsByTag.set(t.f.tag_id, list);
     }
 
-    return tags.map(tag => {
-      const tagTranslations = translationsByTag.get(tag.f.id) || [];
+    // Тег без единого перевода пропускаем, а не роняем весь список — показать
+    // его всё равно нечем (нет названия).
+    return tags.filter(tag => translationsByTag.has(tag.f.id)).map(tag => {
+      const tagTranslations = translationsByTag.get(tag.f.id);
       const translation = pickTranslation(tagTranslations, lang, defaultLang);
       return toResolved(tag, translation, tagTranslations);
     });
@@ -91,8 +93,8 @@ export default class TagService {
       translationsByTag.set(t.f.tag_id, list);
     }
 
-    return tags.map(tag => {
-      const tagTranslations = translationsByTag.get(tag.f.id) || [];
+    return tags.filter(tag => translationsByTag.has(tag.f.id)).map(tag => {
+      const tagTranslations = translationsByTag.get(tag.f.id);
       const translation = pickTranslation(tagTranslations, lang, defaultLang);
       return toResolved(tag, translation, tagTranslations);
     });

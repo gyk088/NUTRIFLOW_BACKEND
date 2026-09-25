@@ -6,6 +6,7 @@ import appUserRoutes from './routes/v1/app/users/index.js'
 import appIngredientRoutes from './routes/v1/app/ingredients/index.js'
 import appRecipeRoutes from './routes/v1/app/recipes/index.js'
 import appArticleRoutes from './routes/v1/app/articles/index.js'
+import appLabReportRoutes from './routes/v1/app/labReports/index.js'
 import appTagRoutes from './routes/v1/app/tags/index.js'
 import appLanguageRoutes from './routes/v1/app/languages/index.js'
 import appDictionaryRoutes from './routes/v1/app/dictionaries/index.js'
@@ -26,11 +27,18 @@ import fastifyView from '@fastify/view'
 import ejs from 'ejs'
 import cors from '@fastify/cors'
 import PgObject from 'pgobject';
-import { Pool } from 'pg'
+import { Pool, types } from 'pg'
 import { fileURLToPath } from 'url'
 import path from 'path'
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// По умолчанию node-postgres парсит DATE (OID 1082) в JS Date по ПОЛУНОЧИ
+// ЛОКАЛЬНОГО времени сервера, а при сериализации в JSON (всегда UTC) дата
+// может съехать на день назад/вперёд в зависимости от таймзоны сервера
+// (напр. lab_report.taken_at). Отдаём DATE как есть, строкой 'YYYY-MM-DD' —
+// без создания Date и, соответственно, без завязки на таймзону.
+types.setTypeParser(1082, (value) => value);
 
 const fastify = Fastify({
   logger: true,
@@ -74,6 +82,7 @@ fastify.register(appUserRoutes, { prefix: '/api/v1/app/users' })
 fastify.register(appIngredientRoutes, { prefix: '/api/v1/app/ingredients' })
 fastify.register(appRecipeRoutes, { prefix: '/api/v1/app/recipes' })
 fastify.register(appArticleRoutes, { prefix: '/api/v1/app/articles' })
+fastify.register(appLabReportRoutes, { prefix: '/api/v1/app/lab-reports' })
 fastify.register(appTagRoutes, { prefix: '/api/v1/app/tags' })
 fastify.register(appLanguageRoutes, { prefix: '/api/v1/app/languages' })
 fastify.register(appDictionaryRoutes, { prefix: '/api/v1/app/dictionaries' })

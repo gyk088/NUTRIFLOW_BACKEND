@@ -1,11 +1,6 @@
-import { randomUUID } from 'crypto';
-import { writeFile, unlink } from 'fs/promises';
+import { unlink } from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { getFileBaseUrl } from '../utils/const.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FILES_DIR = path.join(__dirname, '..', '..', '..', 'files');
+import { saveUploadedFile, FILES_DIR } from '../utils/files.js';
 
 const ALLOWED_MIME_TO_EXT = {
   'image/jpeg': '.jpg',
@@ -16,18 +11,15 @@ const ALLOWED_MIME_TO_EXT = {
 
 export default class FileService {
   static async upload(multipartFile) {
-    if (!multipartFile) throw new Error('No file was uploaded');
-
-    const ext = ALLOWED_MIME_TO_EXT[multipartFile.mimetype];
-    if (!ext) throw new Error('Only JPEG, PNG, WEBP or GIF images are allowed');
-
-    // Случайное имя, а не оригинальное — не доверяем присланному имени файла
-    // (обход пути, коллизии) и заодно исключаем угадывание чужих файлов по URL.
-    const filename = `${randomUUID()}${ext}`;
-    const buffer = await multipartFile.toBuffer();
-    await writeFile(path.join(FILES_DIR, filename), buffer);
-
-    return { url: `${getFileBaseUrl()}/${filename}`, filename };
+    try {
+      const { url, filename } = await saveUploadedFile(multipartFile, ALLOWED_MIME_TO_EXT);
+      return { url, filename };
+    } catch (error) {
+      if (error.message.startsWith('Unsupported file type')) {
+        throw new Error('Only JPEG, PNG, WEBP or GIF images are allowed');
+      }
+      throw error;
+    }
   }
 
   static async remove(filename) {
