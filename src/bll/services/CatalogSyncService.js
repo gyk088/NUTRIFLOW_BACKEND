@@ -29,6 +29,23 @@ export default class CatalogSyncService {
       TagService.getManyResolved(changedTags.map(tag => tag.f.id), lang)
     ]);
 
-    return { recipes, ingredients, tags, syncedAt };
+    // Удаление в админке — это мягкое удаление (deleted_at), а не DELETE
+    // (см. IngredientService/RecipeService/TagService.remove): строка остаётся
+    // как tombstone, и вот здесь мы говорим клиенту убрать её id из локального
+    // кэша — иначе устройство, закэшировавшее каталог, никогда не узнает об
+    // удалении, ведь обычный GET/список просто перестал бы её упоминать.
+    const [deletedIngredientIds, deletedRecipeIds, deletedTagIds] = await Promise.all([
+      IngredientModel.getDeletedIdsSince(since),
+      RecipeModel.getDeletedIdsSince(since),
+      TagModel.getDeletedIdsSince(since)
+    ]);
+
+    return {
+      recipes,
+      ingredients,
+      tags,
+      deletedIds: { recipes: deletedRecipeIds, ingredients: deletedIngredientIds, tags: deletedTagIds },
+      syncedAt
+    };
   }
 }

@@ -24,6 +24,11 @@ export default class IngredientTagModel extends PgObject {
     return IngredientTagModel.select('WHERE ingredient_id = $1', [ingredientId]);
   }
 
+  static async getByIngredientIds(ingredientIds) {
+    if (!ingredientIds.length) return [];
+    return IngredientTagModel.select('WHERE ingredient_id = ANY($1)', [ingredientIds]);
+  }
+
   static async deleteByIngredientId(ingredientId) {
     return IngredientTagModel.query('DELETE FROM ingredient_tag WHERE ingredient_id = $1', [ingredientId]);
   }

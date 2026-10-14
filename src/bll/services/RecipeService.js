@@ -255,12 +255,15 @@ export default class RecipeService {
     return { success: true };
   }
 
+  // Мягкое удаление (deleted_at), а не DELETE — строка остаётся как tombstone
+  // для /app/sync (см. CatalogSyncService), иначе устройство с локальным
+  // кэшем каталога никогда не узнает, что рецепт пропал. Переводы и связи
+  // (состав, теги) не трогаем — они просто больше не всплывают нигде, т.к.
+  // все чтения фильтруют deleted_at IS NULL.
   static async remove(id) {
     const recipe = await RecipeService.getById(id);
-    await RecipeTranslationModel.deleteByRecipeId(id);
-    await RecipeIngredientModel.deleteByRecipeId(id);
-    await RecipeTagModel.deleteByRecipeId(id);
-    await recipe.delete();
+    recipe.f.deleted_at = new Date();
+    await recipe.save();
     await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
     return { success: true };
   }

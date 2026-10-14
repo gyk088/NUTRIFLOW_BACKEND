@@ -151,10 +151,15 @@ export default class TagService {
     return { success: true };
   }
 
+  // Мягкое удаление (deleted_at), а не DELETE — строка остаётся как tombstone
+  // для /app/sync (см. CatalogSyncService), иначе устройство с локальным
+  // кэшем каталога никогда не узнает, что тег пропал. Переводы и связи
+  // (recipe_tag/ingredient_tag/article_tag) не трогаем — тег просто больше
+  // не всплывает нигде, т.к. все чтения фильтруют deleted_at IS NULL.
   static async remove(id) {
     const tag = await TagService.getById(id);
-    await TagTranslationModel.deleteByTagId(id);
-    await tag.delete();
+    tag.f.deleted_at = new Date();
+    await tag.save();
     await DictionaryUpdateModel.touch(DICTIONARIES.TAG);
     return { success: true };
   }

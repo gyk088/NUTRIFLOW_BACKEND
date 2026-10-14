@@ -30,6 +30,11 @@ export default class RecipeIngredientModel extends PgObject {
     return RecipeIngredientModel.select('WHERE recipe_id = $1', [recipeId]);
   }
 
+  static async getByRecipeIds(recipeIds) {
+    if (!recipeIds.length) return [];
+    return RecipeIngredientModel.select('WHERE recipe_id = ANY($1)', [recipeIds]);
+  }
+
   static async deleteByRecipeId(recipeId) {
     return RecipeIngredientModel.query('DELETE FROM recipe_ingredient WHERE recipe_id = $1', [recipeId]);
   }

@@ -1,4 +1,5 @@
 import RecipeService from '../bll/services/RecipeService.js';
+import RecipeExcelService from '../bll/services/RecipeExcelService.js';
 
 const TRANSLATION_FIELDS = ['name', 'description', 'cook_time', 'steps'];
 
@@ -95,6 +96,32 @@ export default class RecipeController {
         try {
             const { id } = request.params;
             const result = await RecipeService.remove(id);
+            return result;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
+    // Выгрузка всех рецептов (все переводы, состав, теги) в .xlsx.
+    static async exportExcel(request, reply) {
+        try {
+            const buffer = await RecipeExcelService.export();
+            reply
+                .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                .header('Content-Disposition', 'attachment; filename="recipes.xlsx"')
+                .send(buffer);
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
+    // Загрузка .xlsx обратно: строки с известным id обновляют рецепт,
+    // остальные создают новый. Ингредиенты состава ищутся по названию.
+    static async importExcel(request, reply) {
+        try {
+            const file = await request.file();
+            const buffer = await file.toBuffer();
+            const result = await RecipeExcelService.import(buffer);
             return result;
         } catch (error) {
             reply.code(400).send({ error: error.message });

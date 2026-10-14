@@ -29,6 +29,11 @@ export default class RecipeTranslationModel extends PgObject {
     return RecipeTranslationModel.select('WHERE recipe_id = $1', [recipeId]);
   }
 
+  static async getByRecipeIds(recipeIds) {
+    if (!recipeIds.length) return [];
+    return RecipeTranslationModel.select('WHERE recipe_id = ANY($1)', [recipeIds]);
+  }
+
   static async getByRecipeIdAndLanguage(recipeId, languageCode) {
     const rows = await RecipeTranslationModel.select('WHERE recipe_id = $1 AND language_code = $2 LIMIT 1', [recipeId, languageCode]);
     return rows[0];

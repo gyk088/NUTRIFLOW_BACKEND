@@ -30,14 +30,14 @@ async function saveTags(ingredientId, tagIds) {
 }
 
 export default class IngredientService {
-  // languageCode/name — язык и название первого перевода, создаваемого вместе с ингредиентом.
-  static async create(languageCode, name, data, tagIds = []) {
+  // languageCode/name/description — язык и первый перевод, создаваемый вместе с ингредиентом.
+  static async create(languageCode, name, data, tagIds = [], description) {
     validateUnit(data.default_unit, data.grams_per_unit);
     const ingredient = new IngredientModel(data);
     await ingredient.save();
 
     try {
-      const translation = new IngredientTranslationModel({ ingredient_id: ingredient.f.id, language_code: languageCode, name });
+      const translation = new IngredientTranslationModel({ ingredient_id: ingredient.f.id, language_code: languageCode, name, description });
       await translation.save();
       await saveTags(ingredient.f.id, tagIds);
     } catch (error) {
@@ -71,6 +71,7 @@ export default class IngredientService {
     return {
       ...ingredient.toJSON(),
       name: translation.f.name,
+      description: translation.f.description,
       language: translation.f.language_code,
       availableLanguages: translations.map(t => t.f.language_code),
       tags
@@ -85,7 +86,7 @@ export default class IngredientService {
 
     return {
       ...ingredient.toJSON(),
-      translations: translations.map(t => ({ language_code: t.f.language_code, name: t.f.name })),
+      translations: translations.map(t => ({ language_code: t.f.language_code, name: t.f.name, description: t.f.description })),
       tagIds: ingredientTags.map(it => it.f.tag_id)
     };
   }
@@ -116,15 +117,16 @@ export default class IngredientService {
     return IngredientService.getFullById(id, null);
   }
 
-  static async addTranslation(ingredientId, languageCode, name) {
+  static async addTranslation(ingredientId, languageCode, name, description) {
     const ingredient = await IngredientService.getById(ingredientId);
 
     const existing = await IngredientTranslationModel.getByIngredientIdAndLanguage(ingredientId, languageCode);
     if (existing) {
       existing.f.name = name;
+      existing.f.description = description;
       await existing.save();
     } else {
-      const translation = new IngredientTranslationModel({ ingredient_id: ingredient.f.id, language_code: languageCode, name });
+      const translation = new IngredientTranslationModel({ ingredient_id: ingredient.f.id, language_code: languageCode, name, description });
       await translation.save();
     }
 
@@ -144,11 +146,15 @@ export default class IngredientService {
     return { success: true };
   }
 
+  // Мягкое удаление (deleted_at), а не DELETE — строка остаётся как tombstone
+  // для /app/sync (см. CatalogSyncService), иначе устройство с локальным
+  // кэшем каталога никогда не узнает, что ингредиент пропал. Переводы и
+  // связи (теги, состав рецептов) не трогаем — они просто больше не
+  // всплывают нигде, т.к. все чтения фильтруют deleted_at IS NULL.
   static async remove(id) {
     const ingredient = await IngredientService.getById(id);
-    await IngredientTranslationModel.deleteByIngredientId(id);
-    await IngredientTagModel.deleteByIngredientId(id);
-    await ingredient.delete();
+    ingredient.f.deleted_at = new Date();
+    await ingredient.save();
     await DictionaryUpdateModel.touch(DICTIONARIES.INGREDIENT);
     return { success: true };
   }

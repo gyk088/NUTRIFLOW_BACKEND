@@ -2,7 +2,7 @@
 // для схемы IngredientModel и для расчёта КБЖУ рецепта в RecipeService.
 export const MACRO_FIELDS = [
   'calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'saturated_fat',
-  'cholesterol', 'sodium', 'omega_3', 'omega_6'
+  'cholesterol', 'sodium', 'omega_3', 'omega_6', 'omega_9'
 ];
 
 export const VITAMIN_FIELDS = [

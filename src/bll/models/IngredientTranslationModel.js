@@ -14,7 +14,8 @@ export default class IngredientTranslationModel extends PgObject {
       },
       name: {
         required: true
-      }
+      },
+      description: {}
     }
   }
 

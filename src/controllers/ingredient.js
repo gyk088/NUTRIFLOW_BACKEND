@@ -1,10 +1,11 @@
 import IngredientService from '../bll/services/IngredientService.js';
+import IngredientExcelService from '../bll/services/IngredientExcelService.js';
 
 export default class IngredientController {
     static async create(request, reply) {
         try {
-            const { languageCode, name, tagIds, ...data } = request.body;
-            const ingredient = await IngredientService.create(languageCode, name, data, tagIds);
+            const { languageCode, name, description, tagIds, ...data } = request.body;
+            const ingredient = await IngredientService.create(languageCode, name, data, tagIds, description);
             return ingredient;
         } catch (error) {
             reply.code(400).send({ error: error.message });
@@ -57,7 +58,7 @@ export default class IngredientController {
     static async addTranslation(request, reply) {
         try {
             const { id, lang } = request.params;
-            const ingredient = await IngredientService.addTranslation(id, lang, request.body.name);
+            const ingredient = await IngredientService.addTranslation(id, lang, request.body.name, request.body.description);
             return ingredient;
         } catch (error) {
             reply.code(400).send({ error: error.message });
@@ -78,6 +79,32 @@ export default class IngredientController {
         try {
             const { id } = request.params;
             const result = await IngredientService.remove(id);
+            return result;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
+    // Выгрузка всех ингредиентов (все переводы, нутриенты, теги) в .xlsx.
+    static async exportExcel(request, reply) {
+        try {
+            const buffer = await IngredientExcelService.export();
+            reply
+                .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                .header('Content-Disposition', 'attachment; filename="ingredients.xlsx"')
+                .send(buffer);
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
+    // Загрузка .xlsx обратно: строки с известным id обновляют ингредиент,
+    // остальные создают новый.
+    static async importExcel(request, reply) {
+        try {
+            const file = await request.file();
+            const buffer = await file.toBuffer();
+            const result = await IngredientExcelService.import(buffer);
             return result;
         } catch (error) {
             reply.code(400).send({ error: error.message });

@@ -16,6 +16,29 @@
 Админ-панель поэтому дёргает оба префикса: читает списки/карточки через `/app/*`,
 пишет — через `/admin/*`.
 
+## Мягкое удаление и tombstones (ingredient / recipe / tag)
+
+`DELETE` для ингредиента, рецепта и тега — это **не** `DELETE FROM` в базе, а
+простановка `deleted_at`. Причина: мобильное приложение кэширует каталог
+локально через `/app/sync?since=` (см. ниже), и обычный `DELETE` не оставил бы
+для этого никакого следа — устройство, которое давно не синхронизировалось,
+никогда не узнало бы, что рецепт пропал, и продолжало бы показывать его из
+локального кэша бесконечно.
+
+- Удалённая строка пропадает из **всех** обычных чтений — `GET` списком, по
+  `id`, поиск, `getUpdatedSince` — как будто её и не было. 404 на прямой
+  запрос, не 200 с пустым телом.
+- Переводы и связи (теги, состав рецепта) при этом не трогаются — они просто
+  нигде больше не всплывают, так как родитель скрыт. Отменить удаление через
+  API нельзя, это не заявлено как «корзина».
+- `GET /app/sync?since=<syncedAt>` дополнительно отдаёт `deletedIds: { recipes,
+  ingredients, tags }` — id всего, что было мягко удалено после `since`.
+  Клиент обязан убрать эти id из локального кэша. Без `since` (первая
+  синхронизация) `deletedIds` всегда пустой — свежему кэшу нечего удалять.
+- Статьи (`article`) через эту схему не проходят и удаляются обычным
+  `DELETE FROM` — они не участвуют в `/app/sync`, отдаются целиком при каждом
+  запросе `GET /app/articles`, так что удаление сразу видно без tombstone.
+
 ## Языковая модель (ingredient / recipe / tag / article)
 
 У этих четырёх сущностей нет фиксированных колонок `name_ru`/`name_en` — вместо
@@ -104,7 +127,7 @@
 | GET | `/users/me/history?field=` | Авторизован | — | История изменений полей анкеты из `preferences.history`: без `field` — вся `{ <поле>: [{ value, ctime }] }`, с `field` — массив по одному полю (400 на неизвестное поле). То же клиент видит и в `GET /users/me` |
 | GET | `/users/me/weight-history` | Авторизован | — | Сокращение для истории веса: `[{ weight_kg, ctime }]` по возрастанию даты |
 | GET | `/ingredients?search=&lang=` | Авторизован | — | Список ингредиентов, резолвленных на `lang`. У каждого есть `default_unit` — в чём его измерять по умолчанию (штуки, граммы, мл...) |
-| GET | `/ingredients/:id?lang=` | Авторизован | — | Один ингредиент + теги (аллергены), резолвленные на `lang` |
+| GET | `/ingredients/:id?lang=` | Авторизован | — | Один ингредиент + описание + теги (аллергены), резолвленные на `lang` |
 | GET | `/recipes?search=&lang=` | Авторизован | — | Список рецептов, резолвленных на `lang` |
 | GET | `/recipes/:id?lang=` | Авторизован | — | Полный рецепт: состав (названия ингредиентов на `lang`), теги, посчитанное КБЖУ |
 | GET | `/articles?search=&lang=` | Авторизован | — | Список статей, резолвленных на `lang`, с `isFavorite` |
@@ -115,7 +138,7 @@
 | GET | `/tags?type=&lang=` | Авторизован | — | Список тегов (фильтр по типу), резолвленных на `lang` |
 | GET | `/tags/:id?lang=` | Авторизован | — | Один тег |
 | GET | `/languages` | Публичный | — | Список настроенных языков `[{ code, name, is_default }]` — без авторизации, т.к. экран выбора языка показывается до логина/регистрации |
-| GET | `/sync?since=<ISO-дата>&lang=` | Авторизован | — | Инкрементальная синхронизация: рецепты/ингредиенты/теги (резолвленные на `lang`), изменённые после `since` (без `since` — весь текущий каталог). Ответ: `{ recipes, ingredients, tags, syncedAt }` — `syncedAt` нужно сохранить на клиенте и передавать как `since` в следующий раз |
+| GET | `/sync?since=<ISO-дата>&lang=` | Авторизован | — | Инкрементальная синхронизация: рецепты/ингредиенты/теги (резолвленные на `lang`), изменённые после `since` (без `since` — весь текущий каталог). Ответ: `{ recipes, ingredients, tags, deletedIds: { recipes, ingredients, tags }, syncedAt }` — `syncedAt` сохранить на клиенте и передавать как `since` в следующий раз; `deletedIds` — см. «Мягкое удаление и tombstones» выше, эти id нужно убрать из локального кэша |
 | GET | `/dictionaries` | Авторизован | — | Время последнего изменения каждого справочника — для инкрементальной синхронизации |
 | POST | `/lab-reports?lang=` | Авторизован | `multipart/form-data`, поле `file` (jpeg/png/webp/pdf, ≤5 МБ) | Загрузить анализ — сохраняет файл и синхронно разбирает его через Gemini API (см. раздел «Разбор анализов через Gemini» ниже). Возвращает отчёт сразу, включая распознанные показатели или ошибку разбора. `lang` — код языка (из `/languages`) для справочных пояснений; без него или для неизвестного кода — язык по умолчанию |
 | GET | `/lab-reports` | Авторизован | — | Список своих отчётов (без показателей), новые сверху |
@@ -129,18 +152,22 @@
 |---|---|---|---|---|
 | GET | `/users` | super_admin | — | Список всех пользователей |
 | PUT | `/users/:id/role` | super_admin | `{ role }` | Смена роли (`user`/`admin`/`super_admin`); нельзя менять свою же роль |
-| POST | `/ingredients` | admin+ | `{ languageCode, name, image_url, default_unit, grams_per_unit, tagIds, ...34 нутриентных поля }` | Создать ингредиент + первый перевод. `default_unit` — единица измерения по умолчанию: `g`, `kg`, `ml`, `l`, `piece`, `tbsp`, `tsp`, `cup`, `slice`, `clove` (по умолчанию `g`); для не-весовых (`piece`, `tbsp`...) обязателен вес одной единицы в `grams_per_unit` (напр. `{ "piece": 55 }`) — иначе 400. Нутриенты по-прежнему заданы на 100 г/мл |
-| GET | `/ingredients/:id` | admin+ | — | Все переводы ингредиента (`translations: [{ language_code, name }]`) + базовые поля — для формы редактирования |
-| PUT | `/ingredients/:id` | admin+ | `{ image_url, default_unit, grams_per_unit, tagIds, ...нутриенты }` | Обновить базовые (языконезависимые) поля (`default_unit` проверяется так же, как при создании) |
-| PUT | `/ingredients/:id/translations/:lang` | admin+ | `{ name }` | Добавить/обновить перевод названия на `lang` |
+| POST | `/ingredients` | admin+ | `{ languageCode, name, description, image_url, default_unit, grams_per_unit, tagIds, ...35 нутриентных полей }` | Создать ингредиент + первый перевод. `description` — необязательное описание на `languageCode`. `default_unit` — единица измерения по умолчанию: `g`, `kg`, `ml`, `l`, `piece`, `tbsp`, `tsp`, `cup`, `slice`, `clove` (по умолчанию `g`); для не-весовых (`piece`, `tbsp`...) обязателен вес одной единицы в `grams_per_unit` (напр. `{ "piece": 55 }`) — иначе 400. Нутриенты по-прежнему заданы на 100 г/мл |
+| GET | `/ingredients/:id` | admin+ | — | Все переводы ингредиента (`translations: [{ language_code, name, description }]`) + базовые поля — для формы редактирования |
+| PUT | `/ingredients/:id` | admin+ | `{ image_url, default_unit, grams_per_unit, tagIds, ...нутриенты }` | Обновить базовые (языконезависимые) поля (`default_unit` проверяется так же, как при создании). `description` — по языку, обновляется через `/translations/:lang`, а не здесь |
+| PUT | `/ingredients/:id/translations/:lang` | admin+ | `{ name, description }` | Добавить/обновить перевод названия (и описания) на `lang` |
 | DELETE | `/ingredients/:id/translations/:lang` | admin+ | — | Удалить перевод (нельзя удалить последний) |
-| DELETE | `/ingredients/:id` | admin+ | — | Удалить ингредиент целиком (все переводы) |
+| DELETE | `/ingredients/:id` | admin+ | — | Мягко удалить ингредиент (см. «Мягкое удаление и tombstones» выше) |
+| GET | `/ingredients/export` | admin+ | — | Выгрузить все (не удалённые) ингредиенты в `.xlsx` — одна строка на ингредиент: `id`, `name_<lang>`/`description_<lang>` на каждый язык из таблицы `language`, `image_url`, `default_unit`, `grams_per_unit` (JSON-строка), `tags` (через запятую, формат `type:название` на языке по умолчанию) и все 35 нутриентных полей |
+| POST | `/ingredients/import` | admin+ | multipart-файл `.xlsx` (поле `file`), в формате `/ingredients/export` | Построчно создаёт/обновляет ингредиенты: строка с `id` существующего ингредиента — обновление (базовые поля, нутриенты, теги и переводы перезаписываются целиком тем, что в строке). Если `id` пустой или не найден, ищется активный ингредиент с таким же названием (без учёта регистра и пробелов) на любом языке строки — при совпадении обновляется он; иначе создаётся новый. Повторная загрузка одного и того же файла поэтому не создаёт дубликаты. В ответе такие строки считаются `updated`. Колонки ищутся по заголовку, а не по позиции. Ответ: `{ created, updated, errors: [{ row, error }] }` — ошибка в одной строке не прерывает обработку остальных |
 | POST | `/recipes` | admin+ | `{ languageCode, name, description, cook_time, steps, image_url, servings, tagIds: [], ingredients: [{ ingredient_id, quantity, unit }] }` | Создать рецепт + первый перевод + состав |
 | GET | `/recipes/:id` | admin+ | — | Все переводы рецепта + состав + теги + КБЖУ — для формы редактирования |
 | PUT | `/recipes/:id` | admin+ | `{ image_url, servings, tagIds, ingredients }` | Обновить базовые поля (состав/теги перезаписываются, если переданы) |
 | PUT | `/recipes/:id/translations/:lang` | admin+ | `{ name, description, cook_time, steps }` | Добавить/обновить перевод на `lang` |
 | DELETE | `/recipes/:id/translations/:lang` | admin+ | — | Удалить перевод (нельзя удалить последний) |
-| DELETE | `/recipes/:id` | admin+ | — | Удалить рецепт целиком |
+| DELETE | `/recipes/:id` | admin+ | — | Мягко удалить рецепт (см. «Мягкое удаление и tombstones» выше) |
+| GET | `/recipes/export` | admin+ | — | Выгрузить все (не удалённые) рецепты в `.xlsx` — одна строка на рецепт: `id`, `name_<lang>`/`description_<lang>`/`cook_time_<lang>`/`steps_<lang>` на каждый язык, `image_url`, `servings`, `tags` (формат `type:название`, как у ингредиентов), `ingredients` — состав в виде `Название:количество:единица; Название2:количество2:единица2`, где название — ингредиент на языке по умолчанию |
+| POST | `/recipes/import` | admin+ | multipart-файл `.xlsx` (поле `file`), в формате `/recipes/export` | Построчно создаёт/обновляет рецепты: строка с `id` существующего рецепта — обновление (базовые поля, состав, теги и переводы перезаписываются целиком тем, что в строке); строка без `id` (или с неизвестным `id`) — создание нового. Ингредиенты в `ingredients` ищутся по названию на языке по умолчанию — если название не найдено или количество некорректно, строка считается ошибочной. Колонки ищутся по заголовку, а не по позиции. Ответ: `{ created, updated, errors: [{ row, error }] }` |
 | POST | `/articles` | admin+ | `{ languageCode, title, content, image_url, tagIds }` | Создать статью + первый перевод |
 | GET | `/articles/:id` | admin+ | — | Все переводы статьи + базовые поля — для формы редактирования |
 | PUT | `/articles/:id` | admin+ | `{ image_url, tagIds }` | Обновить базовые поля |
@@ -152,7 +179,7 @@
 | PUT | `/tags/:id` | admin+ | `{ type }` | Обновить тип |
 | PUT | `/tags/:id/translations/:lang` | admin+ | `{ name }` | Добавить/обновить перевод на `lang` |
 | DELETE | `/tags/:id/translations/:lang` | admin+ | — | Удалить перевод (нельзя удалить последний) |
-| DELETE | `/tags/:id` | admin+ | — | Удалить тег целиком |
+| DELETE | `/tags/:id` | admin+ | — | Мягко удалить тег (см. «Мягкое удаление и tombstones» выше) |
 | POST | `/languages` | admin+ | `{ code, name, is_default? }` | Добавить язык |
 | PUT | `/languages/:code` | admin+ | `{ name?, is_default? }` | Переименовать / сделать языком по умолчанию (снять флаг напрямую нельзя — назначьте другой язык по умолчанию) |
 | DELETE | `/languages/:code` | admin+ | — | Удалить язык (нельзя удалить язык по умолчанию или язык, на который ещё есть переводы) |
@@ -189,8 +216,8 @@ src/routes/v1/
 │   └── sync/index.js           # GET /?since=&lang= — инкрементальная синхронизация
 └── admin/
     ├── users/index.js          # GET /, PUT /:id/role (super_admin)
-    ├── ingredients/index.js    # POST /, GET /:id, PUT /:id, PUT|DELETE /:id/translations/:lang, DELETE /:id
-    ├── recipes/index.js        # POST /, GET /:id, PUT /:id, PUT|DELETE /:id/translations/:lang, DELETE /:id
+    ├── ingredients/index.js    # POST /, GET /export, POST /import, GET /:id, PUT /:id, PUT|DELETE /:id/translations/:lang, DELETE /:id
+    ├── recipes/index.js        # POST /, GET /export, POST /import, GET /:id, PUT /:id, PUT|DELETE /:id/translations/:lang, DELETE /:id
     ├── articles/index.js       # POST /, GET /:id, PUT /:id, PUT|DELETE /:id/translations/:lang, DELETE /:id
     ├── tags/index.js           # POST /, GET /:id, PUT /:id, PUT|DELETE /:id/translations/:lang, DELETE /:id
     ├── languages/index.js      # POST /, PUT /:code, DELETE /:code
