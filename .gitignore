@@ -40,3 +40,6 @@ install/complitedSteps.txt
 # Misc
 *.local
 *.log
+
+# DB dumps — contain password hashes / session tokens, never commit
+*dump*.sql

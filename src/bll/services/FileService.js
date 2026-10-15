@@ -12,8 +12,8 @@ const ALLOWED_MIME_TO_EXT = {
 export default class FileService {
   static async upload(multipartFile) {
     try {
-      const { url, filename } = await saveUploadedFile(multipartFile, ALLOWED_MIME_TO_EXT);
-      return { url, filename };
+      const { filename } = await saveUploadedFile(multipartFile, ALLOWED_MIME_TO_EXT);
+      return { filename };
     } catch (error) {
       if (error.message.startsWith('Unsupported file type')) {
         throw new Error('Only JPEG, PNG, WEBP or GIF images are allowed');

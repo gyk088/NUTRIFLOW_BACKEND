@@ -35,9 +35,9 @@ export default class LabReportService {
       throw error;
     }
 
-    const report = new LabReportModel({ user_id: userId, file_url: saved.url, status: 'processing' });
+    const report = new LabReportModel({ user_id: userId, file_url: saved.filename, status: 'processing' });
     await report.save();
-    console.log(`Saved lab report ${report.f.id} for user ${userId}, file: ${saved.url}`);
+    console.log(`Saved lab report ${report.f.id} for user ${userId}, file: ${saved.filename}`);
 
     try {
       const language = (lang && (await LanguageModel.getByCode(lang))) || (await LanguageModel.getDefault());
@@ -107,7 +107,7 @@ export default class LabReportService {
     await report.delete();
 
     if (report.f.file_url) {
-      const filename = path.basename(new URL(report.f.file_url).pathname);
+      const filename = path.basename(report.f.file_url);
       await unlink(path.join(FILES_DIR, filename)).catch(() => {});
     }
     return { success: true };
