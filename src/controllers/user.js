@@ -19,6 +19,25 @@ export default class UserController {
         }
     }
 
+    static async uploadPhoto(request, reply) {
+        try {
+            const data = await request.file();
+            const user = await UserService.uploadPhoto(request.user.f.id, data);
+            return user;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
+    static async removePhoto(request, reply) {
+        try {
+            const user = await UserService.removePhoto(request.user.f.id);
+            return user;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
     static async getHistory(request, reply) {
         try {
             const history = await UserService.getHistory(request.user.f.id, request.query.field);

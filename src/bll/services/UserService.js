@@ -1,5 +1,8 @@
+import { unlink } from 'fs/promises';
+import path from 'path';
 import UserModel from '../models/UserModel.js';
 import { ROLES } from '../utils/const.js';
+import { saveUploadedFile, FILES_DIR } from '../utils/files.js';
 
 // Поля анкеты (см. install/steps/1.sql), изменения которых пишутся в
 // preferences.history.
@@ -8,6 +11,13 @@ const HISTORY_FIELDS = [
   'activity_level', 'goal_type', 'manual_calorie_target', 'manual_macro_split'
 ];
 const NUMERIC_FIELDS = ['age', 'height_cm', 'weight_kg', 'target_weight_kg', 'manual_calorie_target'];
+
+const ALLOWED_PHOTO_MIME_TO_EXT = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif'
+};
 
 // numeric-колонки pg отдаёт строкой ("80.0"), клиент шлёт числом — приводим к числу,
 // чтобы 80 и "80.0" не считались изменением.
@@ -103,7 +113,7 @@ export default class UserService {
     const user = await UserModel.getUserById(userId);
     if (!user) throw new Error('User not found');
 
-    const allowed = ['name', 'surname', ...HISTORY_FIELDS, 'preferences'];
+    const allowed = ['name', 'surname', 'photo_url', ...HISTORY_FIELDS, 'preferences'];
 
     const previous = {};
     for (const key of HISTORY_FIELDS) previous[key] = user.f[key];
@@ -148,6 +158,45 @@ export default class UserService {
       delete user.f.preferences.familyMembers;
     }
 
+    user.f.utime = new Date();
+    await user.save();
+
+    return user;
+  }
+
+  // Загрузка/замена аватара — отдельный эндпоинт (не updateProfile), чтобы
+  // можно было удалить старый файл с диска при замене/удалении, как у
+  // LabReportService. photo_url хранит только filename, см. install/steps/22.sql.
+  static async uploadPhoto(userId, multipartFile) {
+    const user = await UserModel.getUserById(userId);
+    if (!user) throw new Error('User not found');
+
+    let saved;
+    try {
+      saved = await saveUploadedFile(multipartFile, ALLOWED_PHOTO_MIME_TO_EXT);
+    } catch (error) {
+      if (error.message.startsWith('Unsupported file type')) {
+        throw new Error('Only JPEG, PNG, WEBP or GIF images are allowed');
+      }
+      throw error;
+    }
+
+    const previousFilename = user.f.photo_url;
+    user.f.photo_url = saved.filename;
+    user.f.utime = new Date();
+    await user.save();
+
+    if (previousFilename) await unlink(path.join(FILES_DIR, previousFilename)).catch(() => {});
+
+    return user;
+  }
+
+  static async removePhoto(userId) {
+    const user = await UserModel.getUserById(userId);
+    if (!user) throw new Error('User not found');
+
+    if (user.f.photo_url) await unlink(path.join(FILES_DIR, user.f.photo_url)).catch(() => {});
+    user.f.photo_url = null;
     user.f.utime = new Date();
     await user.save();
 

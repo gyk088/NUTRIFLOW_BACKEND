@@ -6,6 +6,8 @@ import auth from '../../../../hooks/preHendler.js';
 export default async function appUserRoutes(fastify, _options) {
     fastify.get('/me', {preHandler: [auth()]}, UserController.getMe)
     fastify.put('/me', {preHandler: [auth()]}, UserController.updateMe)
+    fastify.post('/me/photo', {preHandler: [auth()]}, UserController.uploadPhoto)
+    fastify.delete('/me/photo', {preHandler: [auth()]}, UserController.removePhoto)
     fastify.get('/me/history', {preHandler: [auth()]}, UserController.getHistory)
     fastify.get('/me/weight-history', {preHandler: [auth()]}, UserController.getWeightHistory)
 }

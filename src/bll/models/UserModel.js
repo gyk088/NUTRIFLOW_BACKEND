@@ -44,7 +44,8 @@ export default class UserModel extends PgObject {
       goal_type: {},
       manual_calorie_target: {},
       manual_macro_split: {},
-      preferences: {}
+      preferences: {},
+      photo_url: {}
     }
   }
 
