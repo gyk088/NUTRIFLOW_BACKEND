@@ -80,6 +80,24 @@ function normalizeFamilyMembers(list, existingMembers, now) {
   });
 }
 
+// Сгенерированное меню и собственные рецепты пользователя — как и семья,
+// хранятся целиком в preferences (клиент — локальный source of truth,
+// сервер просто зеркалирует для переноса между устройствами/переустановок).
+const MAX_MEAL_PLAN_ITEMS = 5000;
+const MAX_MY_RECIPES = 500;
+
+function normalizeMealPlan(list) {
+  if (!Array.isArray(list)) throw new Error('mealPlan must be an array');
+  if (list.length > MAX_MEAL_PLAN_ITEMS) throw new Error(`mealPlan: at most ${MAX_MEAL_PLAN_ITEMS} items`);
+  return list;
+}
+
+function normalizeMyRecipes(list) {
+  if (!Array.isArray(list)) throw new Error('myRecipes must be an array');
+  if (list.length > MAX_MY_RECIPES) throw new Error(`myRecipes: at most ${MAX_MY_RECIPES} recipes`);
+  return list;
+}
+
 const ASSIGNABLE_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.USER];
 
 export default class UserService {
@@ -129,17 +147,28 @@ export default class UserService {
     // сервер — иначе клиент, присылая свою копию preferences, затёр бы историю.
     const now = new Date().toISOString();
     const existingMembers = Array.isArray(existingPreferences.familyMembers) ? existingPreferences.familyMembers : [];
+    const existingMealPlan = Array.isArray(existingPreferences.mealPlan) ? existingPreferences.mealPlan : [];
+    const existingMyRecipes = Array.isArray(existingPreferences.myRecipes) ? existingPreferences.myRecipes : [];
     let familyMembers = existingMembers;
+    let mealPlan = existingMealPlan;
+    let myRecipes = existingMyRecipes;
     let preferences = existingPreferences;
     if (updates.preferences !== undefined) {
       if (updates.preferences === null || typeof updates.preferences !== 'object' || Array.isArray(updates.preferences)) {
         throw new Error('preferences must be an object');
       }
       preferences = { ...updates.preferences };
-      // familyMembers меняются только если ключ прислан — клиент, не знающий о
-      // семье, не должен случайно стереть её, заменяя preferences целиком.
+      // Каждый из этих под-ключей меняется только если прислан явно — клиент,
+      // не знающий о семье/меню/рецептах, не должен случайно стереть их,
+      // заменяя preferences целиком.
       if ('familyMembers' in updates.preferences) {
         familyMembers = normalizeFamilyMembers(updates.preferences.familyMembers, existingMembers, now);
+      }
+      if ('mealPlan' in updates.preferences) {
+        mealPlan = normalizeMealPlan(updates.preferences.mealPlan);
+      }
+      if ('myRecipes' in updates.preferences) {
+        myRecipes = normalizeMyRecipes(updates.preferences.myRecipes);
       }
     }
 
@@ -156,6 +185,16 @@ export default class UserService {
       user.f.preferences.familyMembers = familyMembers;
     } else {
       delete user.f.preferences.familyMembers;
+    }
+    if (mealPlan.length > 0 || (updates.preferences && 'mealPlan' in updates.preferences)) {
+      user.f.preferences.mealPlan = mealPlan;
+    } else {
+      delete user.f.preferences.mealPlan;
+    }
+    if (myRecipes.length > 0 || (updates.preferences && 'myRecipes' in updates.preferences)) {
+      user.f.preferences.myRecipes = myRecipes;
+    } else {
+      delete user.f.preferences.myRecipes;
     }
 
     user.f.utime = new Date();
