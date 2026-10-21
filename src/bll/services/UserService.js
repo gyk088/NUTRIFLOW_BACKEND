@@ -1,8 +1,12 @@
 import { unlink } from 'fs/promises';
 import path from 'path';
 import UserModel from '../models/UserModel.js';
+import ArticleFavoriteModel from '../models/ArticleFavoriteModel.js';
+import LabReportModel from '../models/LabReportModel.js';
+import SessionModel from '../models/SessionModel.js';
 import { ROLES } from '../utils/const.js';
 import { saveUploadedFile, FILES_DIR } from '../utils/files.js';
+import LabReportService from './LabReportService.js';
 
 // Поля анкеты (см. install/steps/1.sql), изменения которых пишутся в
 // preferences.history.
@@ -98,6 +102,16 @@ function normalizeMyRecipes(list) {
   return list;
 }
 
+// Когда согласие с условиями было дано — храним на сервере (не только
+// локально на телефоне), чтобы переустановка не заставляла принимать их снова.
+// Once принято — назад не откатывается, другого значения кроме даты здесь нет.
+function normalizeTermsAcceptedAt(value) {
+  if (typeof value !== 'string' || !value || Number.isNaN(Date.parse(value))) {
+    throw new Error('termsAcceptedAt must be an ISO date string');
+  }
+  return value;
+}
+
 const ASSIGNABLE_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.USER];
 
 export default class UserService {
@@ -149,9 +163,11 @@ export default class UserService {
     const existingMembers = Array.isArray(existingPreferences.familyMembers) ? existingPreferences.familyMembers : [];
     const existingMealPlan = Array.isArray(existingPreferences.mealPlan) ? existingPreferences.mealPlan : [];
     const existingMyRecipes = Array.isArray(existingPreferences.myRecipes) ? existingPreferences.myRecipes : [];
+    const existingTermsAcceptedAt = existingPreferences.termsAcceptedAt ?? null;
     let familyMembers = existingMembers;
     let mealPlan = existingMealPlan;
     let myRecipes = existingMyRecipes;
+    let termsAcceptedAt = existingTermsAcceptedAt;
     let preferences = existingPreferences;
     if (updates.preferences !== undefined) {
       if (updates.preferences === null || typeof updates.preferences !== 'object' || Array.isArray(updates.preferences)) {
@@ -159,8 +175,8 @@ export default class UserService {
       }
       preferences = { ...updates.preferences };
       // Каждый из этих под-ключей меняется только если прислан явно — клиент,
-      // не знающий о семье/меню/рецептах, не должен случайно стереть их,
-      // заменяя preferences целиком.
+      // не знающий о семье/меню/рецептах/согласии, не должен случайно стереть
+      // их, заменяя preferences целиком.
       if ('familyMembers' in updates.preferences) {
         familyMembers = normalizeFamilyMembers(updates.preferences.familyMembers, existingMembers, now);
       }
@@ -169,6 +185,9 @@ export default class UserService {
       }
       if ('myRecipes' in updates.preferences) {
         myRecipes = normalizeMyRecipes(updates.preferences.myRecipes);
+      }
+      if ('termsAcceptedAt' in updates.preferences) {
+        termsAcceptedAt = normalizeTermsAcceptedAt(updates.preferences.termsAcceptedAt);
       }
     }
 
@@ -195,6 +214,11 @@ export default class UserService {
       user.f.preferences.myRecipes = myRecipes;
     } else {
       delete user.f.preferences.myRecipes;
+    }
+    if (termsAcceptedAt) {
+      user.f.preferences.termsAcceptedAt = termsAcceptedAt;
+    } else {
+      delete user.f.preferences.termsAcceptedAt;
     }
 
     user.f.utime = new Date();
@@ -240,6 +264,29 @@ export default class UserService {
     await user.save();
 
     return user;
+  }
+
+  // Полное удаление аккаунта и всех его данных ("Sign out and delete all
+  // data" в приложении) — безвозвратно. familyMembers/mealPlan/myRecipes
+  // живут внутри preferences, так что уходят вместе со строкой my_user; всё
+  // остальное имеет FK на my_user без ON DELETE CASCADE (см. install/steps),
+  // поэтому удаляется явно, в том же стиле, что и везде в этом сервисе.
+  static async deleteAccount(userId) {
+    const user = await UserModel.getUserById(userId);
+    if (!user) throw new Error('User not found');
+
+    const reports = await LabReportModel.getByUserId(userId);
+    for (const report of reports) await LabReportService.remove(report.f.id, userId);
+
+    const favorites = await ArticleFavoriteModel.getByUserId(userId);
+    for (const favorite of favorites) await favorite.delete();
+
+    await SessionModel.deleteAllForUser(userId);
+
+    if (user.f.photo_url) await unlink(path.join(FILES_DIR, user.f.photo_url)).catch(() => {});
+
+    await user.delete();
+    return { success: true };
   }
 
   // Вся история или одного поля (?field=weight_kg): { field: [{ value, ctime }] } / [{ value, ctime }]

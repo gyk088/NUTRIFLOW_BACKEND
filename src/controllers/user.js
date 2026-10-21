@@ -38,6 +38,15 @@ export default class UserController {
         }
     }
 
+    static async deleteMe(request, reply) {
+        try {
+            const result = await UserService.deleteAccount(request.user.f.id);
+            return result;
+        } catch (error) {
+            reply.code(400).send({ error: error.message });
+        }
+    }
+
     static async getHistory(request, reply) {
         try {
             const history = await UserService.getHistory(request.user.f.id, request.query.field);
