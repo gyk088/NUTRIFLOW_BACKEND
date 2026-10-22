@@ -8,7 +8,7 @@ import TagService from './TagService.js';
 import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
 import LanguageService from './LanguageService.js';
 import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
-import { NUTRIENT_FIELDS } from '../utils/nutrients.js';
+import { NUTRIENT_FIELDS, stripNutrients } from '../utils/nutrients.js';
 import { DICTIONARIES, UNIT_TO_GRAMS } from '../utils/const.js';
 
 // Переводит quantity/unit строки состава в граммы. Для весовых/объёмных
@@ -121,7 +121,10 @@ export default class RecipeService {
     return recipe;
   }
 
-  static async getFullById(id, lang) {
+  // includeNutrition=false — для гостевого доступа (см. /app/sync): состав
+  // рецепта (имена/граммовки) остаётся, но без КБЖУ и без нутриентных
+  // колонок в каждом вложенном ingredient.
+  static async getFullById(id, lang, { includeNutrition = true } = {}) {
     const recipe = await RecipeService.getById(id);
 
     const translations = await RecipeTranslationModel.getByRecipeId(id);
@@ -138,12 +141,16 @@ export default class RecipeService {
     const recipeTags = await RecipeTagModel.getByRecipeId(id);
     const tags = await TagService.getManyResolved(recipeTags.map(rt => rt.f.tag_id), lang);
 
-    const servings = recipe.f.servings || 1;
-    const total = sumNutrition(composition, ingredientsById);
-    const perServing = {};
-    for (const field of NUTRIENT_FIELDS) {
-      perServing[field] = round2(total[field] / servings);
-      total[field] = round2(total[field]);
+    let nutrition;
+    if (includeNutrition) {
+      const servings = recipe.f.servings || 1;
+      const total = sumNutrition(composition, ingredientsById);
+      const perServing = {};
+      for (const field of NUTRIENT_FIELDS) {
+        perServing[field] = round2(total[field] / servings);
+        total[field] = round2(total[field]);
+      }
+      nutrition = { total, perServing };
     }
 
     return {
@@ -154,13 +161,16 @@ export default class RecipeService {
       steps: translation.f.steps,
       language: translation.f.language_code,
       availableLanguages: translations.map(t => t.f.language_code),
-      ingredients: composition.map(row => ({
-        ingredient: { ...ingredientsById.get(row.f.ingredient_id)?.toJSON(), name: ingredientNames.get(row.f.ingredient_id) },
-        quantity: row.f.quantity,
-        unit: row.f.unit
-      })),
+      ingredients: composition.map(row => {
+        const ingredient = { ...ingredientsById.get(row.f.ingredient_id)?.toJSON(), name: ingredientNames.get(row.f.ingredient_id) };
+        return {
+          ingredient: includeNutrition ? ingredient : stripNutrients(ingredient),
+          quantity: row.f.quantity,
+          unit: row.f.unit
+        };
+      }),
       tags,
-      nutrition: { total, perServing }
+      ...(nutrition ? { nutrition } : {})
     };
   }
 

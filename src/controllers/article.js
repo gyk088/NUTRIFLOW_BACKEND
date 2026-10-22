@@ -15,7 +15,7 @@ export default class ArticleController {
     static async getById(request, reply) {
         try {
             const { id } = request.params;
-            const article = await ArticleService.getFullById(id, request.query.lang, request.user.f.id);
+            const article = await ArticleService.getFullById(id, request.query.lang, request.user?.f.id ?? null);
             return article;
         } catch (error) {
             reply.code(404).send({ error: error.message });
@@ -36,7 +36,7 @@ export default class ArticleController {
     static async getAll(request, reply) {
         try {
             const { search, lang } = request.query;
-            const articles = await ArticleService.getAll(lang, search, request.user.f.id);
+            const articles = await ArticleService.getAll(lang, search, request.user?.f.id ?? null);
             return articles;
         } catch (error) {
             reply.code(400).send({ error: error.message });

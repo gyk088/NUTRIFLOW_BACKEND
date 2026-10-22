@@ -5,7 +5,7 @@ import TagService from './TagService.js';
 import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
 import LanguageService from './LanguageService.js';
 import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
-import { NUTRIENT_FIELDS } from '../utils/nutrients.js';
+import { NUTRIENT_FIELDS, stripNutrients } from '../utils/nutrients.js';
 import { DICTIONARIES, MEASURE_UNITS, UNIT_TO_GRAMS } from '../utils/const.js';
 
 const UPDATABLE_FIELDS = ['image_url', 'grams_per_unit', 'default_unit', ...NUTRIENT_FIELDS];
@@ -57,7 +57,9 @@ export default class IngredientService {
     return ingredient;
   }
 
-  static async getFullById(id, lang) {
+  // includeNutrition=false — для гостевого доступа (см. /app/sync): отдаёт
+  // имя/изображение/единицы измерения, но без нутриентных колонок.
+  static async getFullById(id, lang, { includeNutrition = true } = {}) {
     const ingredient = await IngredientService.getById(id);
     const translations = await IngredientTranslationModel.getByIngredientId(id);
     if (!translations.length) throw new MissingTranslationsError('Ingredient has no translations');
@@ -68,7 +70,7 @@ export default class IngredientService {
     const ingredientTags = await IngredientTagModel.getByIngredientId(id);
     const tags = await TagService.getManyResolved(ingredientTags.map(it => it.f.tag_id), lang);
 
-    return {
+    const full = {
       ...ingredient.toJSON(),
       name: translation.f.name,
       description: translation.f.description,
@@ -76,6 +78,7 @@ export default class IngredientService {
       availableLanguages: translations.map(t => t.f.language_code),
       tags
     };
+    return includeNutrition ? full : stripNutrients(full);
   }
 
   // Для формы редактирования в админке — все переводы сразу.

@@ -14,18 +14,22 @@ export default class CatalogSyncService {
   // syncedAt в ответе — время СЕРВЕРА на момент этого запроса; клиент должен
   // сохранить именно его как новую точку отсчёта для следующего запроса
   // (а не, например, максимальный utime среди полученных строк).
-  static async sync(since, lang) {
+  // isGuest=true — неавторизованный запрос (см. optionalAuth): рецепты
+  // отдаются без КБЖУ/нутриентов в составе, а полный каталог ингредиентов
+  // (с их нутриентами) не отдаётся вовсе — гость не должен видеть список
+  // ингредиентов.
+  static async sync(since, lang, isGuest = false) {
     const syncedAt = new Date();
 
     const [changedIngredients, changedRecipes, changedTags] = await Promise.all([
-      IngredientModel.getUpdatedSince(since),
+      isGuest ? [] : IngredientModel.getUpdatedSince(since),
       RecipeModel.getUpdatedSince(since),
       TagModel.getUpdatedSince(since)
     ]);
 
     const [ingredients, recipes, tags] = await Promise.all([
       resolveAll(changedIngredients, ingredient => IngredientService.getFullById(ingredient.f.id, lang)),
-      resolveAll(changedRecipes, recipe => RecipeService.getFullById(recipe.f.id, lang)),
+      resolveAll(changedRecipes, recipe => RecipeService.getFullById(recipe.f.id, lang, { includeNutrition: !isGuest })),
       TagService.getManyResolved(changedTags.map(tag => tag.f.id), lang)
     ]);
 

@@ -35,3 +35,29 @@ export default function auth (rolesArray) {
     }
   }
 }
+
+// Как auth(), но никогда не отвечает 401 — без токена или с недействительным
+// токеном request.user просто остаётся null (гостевой доступ). Для роутов,
+// которые отдают урезанные данные анонимам (см. /app/sync).
+export function optionalAuth () {
+  return async function(request, _reply) {
+    const token = request.headers?.authorization?.replace('Bearer ', '');
+    if (!token) {
+      request.user = null;
+      return;
+    }
+
+    try {
+      const result = await AuthService.loginByToken(
+        token,
+        request.ip,
+        request.headers['user-agent'],
+        request.headers['x-fcm']
+      );
+      request.user = result?.user ?? null;
+      request.impersonatedBy = result?.impersonatedBy;
+    } catch {
+      request.user = null;
+    }
+  }
+}

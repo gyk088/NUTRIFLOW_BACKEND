@@ -16,3 +16,11 @@ export const MINERAL_FIELDS = [
 ];
 
 export const NUTRIENT_FIELDS = [...MACRO_FIELDS, ...VITAMIN_FIELDS, ...MINERAL_FIELDS];
+
+// Для гостевого (неавторизованного) доступа к каталогу — вырезает все
+// нутриентные колонки из объекта, оставляя id/название/изображение/единицы.
+export function stripNutrients(obj) {
+  const clean = { ...obj };
+  for (const field of NUTRIENT_FIELDS) delete clean[field];
+  return clean;
+}
