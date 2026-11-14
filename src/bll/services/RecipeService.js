@@ -10,6 +10,15 @@ import LanguageService from './LanguageService.js';
 import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
 import { NUTRIENT_FIELDS, stripNutrients } from '../utils/nutrients.js';
 import { DICTIONARIES, UNIT_TO_GRAMS } from '../utils/const.js';
+import { isVisibleTo, assertOwnPrivate, NotFoundError, loadAuthors, loadAuthor, toNonNegativeNumber } from '../utils/ownership.js';
+
+const BASE_FIELDS = ['image_url', 'servings'];
+const TRANSLATION_FIELDS = ['name', 'description', 'cook_time', 'steps'];
+
+// Сколько личных рецептов может завести один пользователь приложения
+// (как и прежний лимит preferences.myRecipes).
+const MAX_USER_RECIPES = 500;
+const MAX_NAME_LENGTH = 150;
 
 // Переводит quantity/unit строки состава в граммы. Для весовых/объёмных
 // единиц — прямой коэффициент, для штучных (piece, tbsp...) — через
@@ -91,16 +100,79 @@ async function saveComposition(recipeId, ingredients, tagIds) {
   }
 }
 
+function pickBase(data) {
+  const picked = {};
+  for (const key of BASE_FIELDS) {
+    if (data?.[key] !== undefined) picked[key] = data[key];
+  }
+  return picked;
+}
+
+function validateServings(base) {
+  if (base.servings === undefined) return;
+  const servings = Number(base.servings);
+  if (!Number.isInteger(servings) || servings < 1 || servings > 100) throw new Error('servings must be an integer from 1 to 100');
+  base.servings = servings;
+}
+
+// Состав проверяем ДО записи: ингредиент существует и не удалён, его можно
+// использовать в этом рецепте, единицу можно перевести в граммы, без дублей.
+// В рецепт каталога (isPublic) — только ингредиенты каталога, иначе
+// остальные пользователи получат рецепт со "скрытым" ингредиентом. В
+// личный рецепт — каталог + личные ингредиенты автора рецепта (ownerId).
+async function validateComposition(items, { isPublic, ownerId }) {
+  if (!Array.isArray(items)) throw new Error('ingredients must be an array');
+
+  const ids = items.map(item => item?.ingredient_id);
+  if (ids.some(id => typeof id !== 'string' || !id)) throw new Error('each ingredient needs ingredient_id');
+  if (new Set(ids).size !== ids.length) throw new Error('an ingredient can appear in a recipe only once');
+
+  const found = await IngredientModel.getByIds(ids);
+  const byId = new Map(found.map(ing => [ing.f.id, ing]));
+
+  return items.map(item => {
+    const ingredient = byId.get(item.ingredient_id);
+    const allowed = ingredient && (ingredient.f.is_public || (!isPublic && ownerId && ingredient.f.user_id === ownerId));
+    if (!allowed) {
+      if (ingredient && isPublic) throw new Error(`Ingredient "${item.ingredient_id}" is not in the shared catalog yet — publish it first`);
+      throw new Error(`Ingredient "${item.ingredient_id}" not found`);
+    }
+    const quantity = toNonNegativeNumber(item.quantity, 'quantity');
+    if (quantity === 0) throw new Error('quantity must be greater than 0');
+    const unit = item.unit || 'g';
+    toGrams(ingredient, quantity, unit);
+    return { ingredient_id: item.ingredient_id, quantity, unit };
+  });
+}
+
+function validateRecipeName(name) {
+  if (typeof name !== 'string' || !name.trim()) throw new Error('name is required');
+  if (name.trim().length > MAX_NAME_LENGTH) throw new Error(`name must be at most ${MAX_NAME_LENGTH} characters`);
+  return name.trim();
+}
+
 export default class RecipeService {
   // languageCode — язык первого перевода. translationData — {name, description, cook_time, steps}.
-  static async create(languageCode, translationData, baseData, ingredients = [], tagIds = []) {
-    const recipe = new RecipeModel(baseData);
+  // userId — рецепт создаёт пользователь приложения: он личный (is_public=false),
+  // пока админ не добавит его в общий каталог.
+  static async create(languageCode, translationData, baseData, ingredients = [], tagIds = [], { userId = null } = {}) {
+    const base = pickBase(baseData);
+    validateServings(base);
+    if (userId) {
+      translationData = { ...translationData, name: validateRecipeName(translationData?.name) };
+      const own = await RecipeModel.getByUserId(userId);
+      if (own.length >= MAX_USER_RECIPES) throw new Error(`At most ${MAX_USER_RECIPES} own recipes`);
+      Object.assign(base, { user_id: userId, is_public: false });
+    }
+    const composition = await validateComposition(ingredients || [], { isPublic: !userId, ownerId: userId });
+
+    const recipe = new RecipeModel(base);
     await recipe.save();
 
     try {
       const translation = new RecipeTranslationModel({ recipe_id: recipe.f.id, language_code: languageCode, ...translationData });
       await translation.save();
-      await saveComposition(recipe.f.id, ingredients, tagIds);
+      await saveComposition(recipe.f.id, composition, tagIds || []);
     } catch (error) {
       // Pool выдаёт по соединению на каждый query(), так что настоящей
       // SQL-транзакции здесь не выйдет — откатываем состав вручную.
@@ -117,15 +189,17 @@ export default class RecipeService {
 
   static async getById(id) {
     const recipe = await RecipeModel.getById(id);
-    if (!recipe) throw new Error('Recipe not found');
+    if (!recipe) throw new NotFoundError('Recipe not found');
     return recipe;
   }
 
   // includeNutrition=false — для гостевого доступа (см. /app/sync): состав
   // рецепта (имена/граммовки) остаётся, но без КБЖУ и без нутриентных
   // колонок в каждом вложенном ingredient.
-  static async getFullById(id, lang, { includeNutrition = true } = {}) {
+  // viewerId — запрос из приложения: чужой личный рецепт = "не найден".
+  static async getFullById(id, lang, { includeNutrition = true, viewerId } = {}) {
     const recipe = await RecipeService.getById(id);
+    if (viewerId !== undefined && !isVisibleTo(recipe, viewerId)) throw new NotFoundError('Recipe not found');
 
     const translations = await RecipeTranslationModel.getByRecipeId(id);
     if (!translations.length) throw new MissingTranslationsError('Recipe has no translations');
@@ -174,7 +248,9 @@ export default class RecipeService {
     };
   }
 
-  // Для формы редактирования в админке — все переводы сразу.
+  // Для формы редактирования в админке — все переводы сразу (+ автор и
+  // названия ингредиентов состава: личные ингредиенты пользователя не
+  // входят в общий список, из которого админка берёт названия).
   static async getAdminDetail(id) {
     const recipe = await RecipeService.getById(id);
     const translations = await RecipeTranslationModel.getByRecipeId(id);
@@ -184,6 +260,7 @@ export default class RecipeService {
     const ingredientIds = composition.map(row => row.f.ingredient_id);
     const ingredients = await IngredientModel.getByIds(ingredientIds);
     const ingredientsById = new Map(ingredients.map(ing => [ing.f.id, ing]));
+    const ingredientNames = await resolveIngredientNames(ingredientIds, null);
 
     const servings = recipe.f.servings || 1;
     const total = sumNutrition(composition, ingredientsById);
@@ -202,39 +279,103 @@ export default class RecipeService {
         cook_time: t.f.cook_time,
         steps: t.f.steps
       })),
-      ingredients: composition.map(row => ({ ingredient_id: row.f.ingredient_id, quantity: row.f.quantity, unit: row.f.unit })),
+      ingredients: composition.map(row => {
+        const ingredient = ingredientsById.get(row.f.ingredient_id);
+        return {
+          ingredient_id: row.f.ingredient_id,
+          quantity: row.f.quantity,
+          unit: row.f.unit,
+          name: ingredientNames.get(row.f.ingredient_id),
+          default_unit: ingredient?.f.default_unit,
+          is_public: ingredient ? ingredient.f.is_public : null
+        };
+      }),
       tagIds: recipeTags.map(rt => rt.f.tag_id),
-      nutrition: { total, perServing }
+      nutrition: { total, perServing },
+      author: await loadAuthor(recipe.f.user_id)
     };
   }
 
-  static async getAll(search, lang) {
-    let ids = null;
-    if (search) ids = await RecipeTranslationModel.searchRecipeIds(search);
-
-    const recipes = ids ? await RecipeModel.getByIds(ids) : await RecipeModel.getAll();
+  // Каталог + (если передан viewerId) личные рецепты этого пользователя.
+  static async getAll(search, lang, viewerId = null) {
+    const ids = search ? await RecipeTranslationModel.searchRecipeIds(search) : null;
+    const recipes = await RecipeModel.getVisible(viewerId, ids);
     return resolveAll(recipes, recipe => RecipeService.getFullById(recipe.f.id, lang));
+  }
+
+  // Свои рецепты пользователя приложения (личные и уже добавленные в каталог).
+  static async getOwn(userId, lang) {
+    const recipes = await RecipeModel.getByUserId(userId);
+    return resolveAll(recipes, recipe => RecipeService.getFullById(recipe.f.id, lang));
+  }
+
+  // Для админки — рецепты, созданные пользователями, с автором и списком
+  // ещё личных ингредиентов состава (они уйдут в каталог вместе с рецептом).
+  static async getUserCreated(status = 'pending', search, lang) {
+    const ids = search ? await RecipeTranslationModel.searchRecipeIds(search) : null;
+    const recipes = await RecipeModel.getUserCreated(status, ids);
+    const authors = await loadAuthors(recipes);
+
+    return resolveAll(recipes, async recipe => {
+      const full = await RecipeService.getFullById(recipe.f.id, lang);
+      const privateIngredients = full.ingredients
+        .filter(item => item.ingredient.is_public === false)
+        .map(item => ({ id: item.ingredient.id, name: item.ingredient.name }));
+      return { ...full, author: authors.get(recipe.f.user_id) || null, privateIngredients };
+    });
   }
 
   static async update(id, baseUpdates, ingredients, tagIds) {
     const recipe = await RecipeService.getById(id);
 
-    const allowed = ['image_url', 'servings'];
-    for (const key of allowed) {
-      if (baseUpdates[key] !== undefined) recipe.f[key] = baseUpdates[key];
-    }
+    const base = pickBase(baseUpdates);
+    validateServings(base);
+    const composition = ingredients
+      ? await validateComposition(ingredients, { isPublic: recipe.f.is_public, ownerId: recipe.f.user_id })
+      : null;
+
+    Object.assign(recipe.f, base);
+    recipe.f.utime = new Date();
     await recipe.save();
 
-    if (ingredients) {
+    if (composition) {
       await RecipeIngredientModel.deleteByRecipeId(id);
     }
     if (tagIds) {
       await RecipeTagModel.deleteByRecipeId(id);
     }
-    await saveComposition(id, ingredients || [], tagIds || []);
+    await saveComposition(id, composition || [], tagIds || []);
 
     await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
     return RecipeService.getFullById(id, null);
+  }
+
+  // Изменение своего личного рецепта из приложения. body — как при создании:
+  // { languageCode?, name?, description?, cook_time?, steps?, servings?,
+  //   image_url?, ingredients?, tagIds? }. Тексты меняют перевод на
+  // languageCode (по умолчанию — язык, на котором рецепт создан).
+  static async updateOwn(userId, id, body) {
+    const recipe = await RecipeModel.getById(id);
+    assertOwnPrivate(recipe, userId, 'Recipe');
+
+    const translationData = {};
+    for (const key of TRANSLATION_FIELDS) {
+      if (body[key] !== undefined) translationData[key] = body[key];
+    }
+    if (translationData.name !== undefined) translationData.name = validateRecipeName(translationData.name);
+
+    let lang = body.languageCode;
+    if (Object.keys(translationData).length) {
+      const translations = await RecipeTranslationModel.getByRecipeId(id);
+      lang = lang || translations[0]?.f.language_code;
+      if (!lang) throw new Error('languageCode is required');
+      const current = translations.find(t => t.f.language_code === lang);
+      if (!current && !translationData.name) throw new Error('name is required');
+    }
+
+    await RecipeService.update(id, body, body.ingredients, body.tagIds);
+    if (Object.keys(translationData).length) await RecipeService.addTranslation(id, lang, translationData);
+    return RecipeService.getFullById(id, lang);
   }
 
   static async addTranslation(recipeId, languageCode, translationData) {
@@ -248,6 +389,11 @@ export default class RecipeService {
       const translation = new RecipeTranslationModel({ recipe_id: recipe.f.id, language_code: languageCode, ...translationData });
       await translation.save();
     }
+
+    // Перевод живёт в своей таблице — помечаем сам рецепт изменённым, чтобы
+    // новое название ушло в /app/sync.
+    recipe.f.utime = new Date();
+    await recipe.save();
 
     await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
     return RecipeService.getFullById(recipeId, languageCode);
@@ -276,5 +422,39 @@ export default class RecipeService {
     await recipe.save();
     await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
     return { success: true };
+  }
+
+  static async removeOwn(userId, id) {
+    const recipe = await RecipeModel.getById(id);
+    assertOwnPrivate(recipe, userId, 'Recipe');
+    return RecipeService.remove(id);
+  }
+
+  // Админ добавляет пользовательский рецепт в общий каталог (тот же id).
+  // Личные ингредиенты автора из состава публикуются вместе с ним — иначе
+  // остальные пользователи получили бы рецепт со скрытыми ингредиентами.
+  static async publish(id) {
+    const recipe = await RecipeService.getById(id);
+    const composition = await RecipeIngredientModel.getByRecipeId(id);
+    const ingredients = await IngredientModel.getByIds(composition.map(row => row.f.ingredient_id));
+
+    const publishedIngredientIds = [];
+    for (const ingredient of ingredients) {
+      if (ingredient.f.is_public) continue;
+      ingredient.f.is_public = true;
+      ingredient.f.published_at = new Date();
+      await ingredient.save();
+      publishedIngredientIds.push(ingredient.f.id);
+    }
+    if (publishedIngredientIds.length) await DictionaryUpdateModel.touch(DICTIONARIES.INGREDIENT);
+
+    if (!recipe.f.is_public) {
+      recipe.f.is_public = true;
+      recipe.f.published_at = new Date();
+      await recipe.save();
+      await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
+    }
+
+    return { ...(await RecipeService.getAdminDetail(id)), publishedIngredientIds };
   }
 }

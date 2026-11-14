@@ -18,12 +18,16 @@ export default class CatalogSyncService {
   // отдаются без КБЖУ/нутриентов в составе, а полный каталог ингредиентов
   // (с их нутриентами) не отдаётся вовсе — гость не должен видеть список
   // ингредиентов.
-  static async sync(since, lang, isGuest = false) {
+  // userId — авторизованный пользователь: вместе с каталогом получает свои
+  // личные ингредиенты/рецепты (is_public=false, см. install/steps/23.sql),
+  // а в deletedIds — и их удаления. Отличить своё от каталога клиент может по
+  // полям user_id / is_public в каждой записи.
+  static async sync(since, lang, isGuest = false, userId = null) {
     const syncedAt = new Date();
 
     const [changedIngredients, changedRecipes, changedTags] = await Promise.all([
-      isGuest ? [] : IngredientModel.getUpdatedSince(since),
-      RecipeModel.getUpdatedSince(since),
+      isGuest ? [] : IngredientModel.getUpdatedSince(since, userId),
+      RecipeModel.getUpdatedSince(since, isGuest ? null : userId),
       TagModel.getUpdatedSince(since)
     ]);
 
@@ -39,8 +43,8 @@ export default class CatalogSyncService {
     // кэша — иначе устройство, закэшировавшее каталог, никогда не узнает об
     // удалении, ведь обычный GET/список просто перестал бы её упоминать.
     const [deletedIngredientIds, deletedRecipeIds, deletedTagIds] = await Promise.all([
-      IngredientModel.getDeletedIdsSince(since),
-      RecipeModel.getDeletedIdsSince(since),
+      IngredientModel.getDeletedIdsSince(since, userId),
+      RecipeModel.getDeletedIdsSince(since, userId),
       TagModel.getDeletedIdsSince(since)
     ]);
 

@@ -58,6 +58,11 @@ export default class UserModel extends PgObject {
     return users[0];
   }
 
+  static async getByIds(ids) {
+    if (!ids.length) return [];
+    return UserModel.select('WHERE id = ANY($1)', [ids]);
+  }
+
   static async getAll() {
     return UserModel.select('ORDER BY ctime DESC', []);
   }

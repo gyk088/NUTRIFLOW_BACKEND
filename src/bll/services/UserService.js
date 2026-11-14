@@ -4,6 +4,10 @@ import UserModel from '../models/UserModel.js';
 import ArticleFavoriteModel from '../models/ArticleFavoriteModel.js';
 import LabReportModel from '../models/LabReportModel.js';
 import SessionModel from '../models/SessionModel.js';
+import RecipeModel from '../models/RecipeModel.js';
+import IngredientModel from '../models/IngredientModel.js';
+import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
+import { DICTIONARIES } from '../utils/const.js';
 import { ROLES } from '../utils/const.js';
 import { saveUploadedFile, FILES_DIR } from '../utils/files.js';
 import LabReportService from './LabReportService.js';
@@ -87,6 +91,9 @@ function normalizeFamilyMembers(list, existingMembers, now) {
 // Сгенерированное меню и собственные рецепты пользователя — как и семья,
 // хранятся целиком в preferences (клиент — локальный source of truth,
 // сервер просто зеркалирует для переноса между устройствами/переустановок).
+// preferences.myRecipes УСТАРЕЛО: свои рецепты теперь — строки в recipe
+// (POST /app/recipes, install/steps/23.sql). Принимается только ради старых
+// версий приложения.
 const MAX_MEAL_PLAN_ITEMS = 5000;
 const MAX_MY_RECIPES = 500;
 
@@ -282,6 +289,17 @@ export default class UserService {
     for (const favorite of favorites) await favorite.delete();
 
     await SessionModel.deleteAllForUser(userId);
+
+    // Свои личные рецепты и ингредиенты (install/steps/23.sql) — безвозвратно,
+    // вместе с картинками. Рецепты первыми: они ссылаются на ингредиенты.
+    // Уже добавленные админом в каталог остаются (user_id обнулит FK ON DELETE SET NULL).
+    const ownRecipes = await RecipeModel.hardDeletePrivateByUserId(userId);
+    const ownIngredients = await IngredientModel.hardDeletePrivateByUserId(userId);
+    for (const row of [...ownRecipes, ...ownIngredients]) {
+      if (row.f.image_url) await unlink(path.join(FILES_DIR, path.basename(row.f.image_url))).catch(() => {});
+    }
+    if (ownRecipes.length) await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
+    if (ownIngredients.length) await DictionaryUpdateModel.touch(DICTIONARIES.INGREDIENT);
 
     if (user.f.photo_url) await unlink(path.join(FILES_DIR, user.f.photo_url)).catch(() => {});
 

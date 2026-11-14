@@ -1,5 +1,11 @@
 import RecipeService from '../bll/services/RecipeService.js';
 import RecipeExcelService from '../bll/services/RecipeExcelService.js';
+import { NotFoundError } from '../bll/utils/ownership.js';
+
+function sendError(reply, error) {
+    if (error instanceof NotFoundError) return reply.code(404).send({ error: error.message });
+    return reply.code(400).send({ error: error.message });
+}
 
 const TRANSLATION_FIELDS = ['name', 'description', 'cook_time', 'steps'];
 
@@ -29,7 +35,7 @@ export default class RecipeController {
     static async getById(request, reply) {
         try {
             const { id } = request.params;
-            const recipe = await RecipeService.getFullById(id, request.query.lang);
+            const recipe = await RecipeService.getFullById(id, request.query.lang, { viewerId: request.user.f.id });
             return recipe;
         } catch (error) {
             reply.code(404).send({ error: error.message });
@@ -50,7 +56,7 @@ export default class RecipeController {
     static async getAll(request, reply) {
         try {
             const { search, lang } = request.query;
-            const recipes = await RecipeService.getAll(search, lang);
+            const recipes = await RecipeService.getAll(search, lang, request.user.f.id);
             return recipes;
         } catch (error) {
             reply.code(400).send({ error: error.message });
@@ -99,6 +105,62 @@ export default class RecipeController {
             return result;
         } catch (error) {
             reply.code(400).send({ error: error.message });
+        }
+    }
+
+    // ---- Свои рецепты пользователя приложения (/app/recipes) ----
+
+    static async createOwn(request, reply) {
+        try {
+            const { languageCode, translationData, baseData, ingredients, tagIds } = splitBody(request.body || {});
+            if (!languageCode) throw new Error('languageCode is required');
+            return await RecipeService.create(languageCode, translationData, baseData, ingredients, tagIds, { userId: request.user.f.id });
+        } catch (error) {
+            sendError(reply, error);
+        }
+    }
+
+    static async getOwn(request, reply) {
+        try {
+            return await RecipeService.getOwn(request.user.f.id, request.query.lang);
+        } catch (error) {
+            sendError(reply, error);
+        }
+    }
+
+    static async updateOwn(request, reply) {
+        try {
+            return await RecipeService.updateOwn(request.user.f.id, request.params.id, request.body || {});
+        } catch (error) {
+            sendError(reply, error);
+        }
+    }
+
+    static async removeOwn(request, reply) {
+        try {
+            return await RecipeService.removeOwn(request.user.f.id, request.params.id);
+        } catch (error) {
+            sendError(reply, error);
+        }
+    }
+
+    // ---- Админка: рецепты пользователей ----
+
+    // ?status=pending (по умолчанию) | published | all, ?search=, ?lang=
+    static async getUserCreated(request, reply) {
+        try {
+            const { status, search, lang } = request.query;
+            return await RecipeService.getUserCreated(status || 'pending', search, lang);
+        } catch (error) {
+            sendError(reply, error);
+        }
+    }
+
+    static async publish(request, reply) {
+        try {
+            return await RecipeService.publish(request.params.id);
+        } catch (error) {
+            sendError(reply, error);
         }
     }
 

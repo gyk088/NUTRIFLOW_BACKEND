@@ -5,6 +5,8 @@ import { ADMIN_AND_ABOVE } from '../../../../bll/utils/const.js';
 // Запись каталога — для админ-панели. Чтение — см. routes/v1/app/recipes.
 export default async function adminRecipeRoutes(fastify, _options) {
     fastify.post('/', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.create);
+    // Созданные пользователями приложения (?status=pending|published|all).
+    fastify.get('/user-created', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.getUserCreated);
     fastify.get('/export', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.exportExcel);
     fastify.post('/import', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.importExcel);
     fastify.get('/:id', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.getAdminDetail);
@@ -12,4 +14,6 @@ export default async function adminRecipeRoutes(fastify, _options) {
     fastify.put('/:id/translations/:lang', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.addTranslation);
     fastify.delete('/:id/translations/:lang', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.removeTranslation);
     fastify.delete('/:id', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.remove);
+    // Добавить пользовательскую запись в общий каталог.
+    fastify.post('/:id/publish', {preHandler: [auth(ADMIN_AND_ABOVE)]}, RecipeController.publish);
 }
