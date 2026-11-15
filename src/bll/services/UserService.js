@@ -10,6 +10,7 @@ import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
 import { DICTIONARIES } from '../utils/const.js';
 import { ROLES } from '../utils/const.js';
 import { saveUploadedFile, FILES_DIR } from '../utils/files.js';
+import { makeThumb, removeThumb } from '../utils/thumbs.js';
 import LabReportService from './LabReportService.js';
 
 // Поля анкеты (см. install/steps/1.sql), изменения которых пишутся в
@@ -251,12 +252,17 @@ export default class UserService {
       throw error;
     }
 
+    await makeThumb(saved.filename);
+
     const previousFilename = user.f.photo_url;
     user.f.photo_url = saved.filename;
     user.f.utime = new Date();
     await user.save();
 
-    if (previousFilename) await unlink(path.join(FILES_DIR, previousFilename)).catch(() => {});
+    if (previousFilename) {
+      await unlink(path.join(FILES_DIR, previousFilename)).catch(() => {});
+      await removeThumb(previousFilename);
+    }
 
     return user;
   }
@@ -265,7 +271,10 @@ export default class UserService {
     const user = await UserModel.getUserById(userId);
     if (!user) throw new Error('User not found');
 
-    if (user.f.photo_url) await unlink(path.join(FILES_DIR, user.f.photo_url)).catch(() => {});
+    if (user.f.photo_url) {
+      await unlink(path.join(FILES_DIR, user.f.photo_url)).catch(() => {});
+      await removeThumb(user.f.photo_url);
+    }
     user.f.photo_url = null;
     user.f.utime = new Date();
     await user.save();
@@ -296,12 +305,18 @@ export default class UserService {
     const ownRecipes = await RecipeModel.hardDeletePrivateByUserId(userId);
     const ownIngredients = await IngredientModel.hardDeletePrivateByUserId(userId);
     for (const row of [...ownRecipes, ...ownIngredients]) {
-      if (row.f.image_url) await unlink(path.join(FILES_DIR, path.basename(row.f.image_url))).catch(() => {});
+      if (row.f.image_url) {
+        await unlink(path.join(FILES_DIR, path.basename(row.f.image_url))).catch(() => {});
+        await removeThumb(row.f.image_url);
+      }
     }
     if (ownRecipes.length) await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
     if (ownIngredients.length) await DictionaryUpdateModel.touch(DICTIONARIES.INGREDIENT);
 
-    if (user.f.photo_url) await unlink(path.join(FILES_DIR, user.f.photo_url)).catch(() => {});
+    if (user.f.photo_url) {
+      await unlink(path.join(FILES_DIR, user.f.photo_url)).catch(() => {});
+      await removeThumb(user.f.photo_url);
+    }
 
     await user.delete();
     return { success: true };
