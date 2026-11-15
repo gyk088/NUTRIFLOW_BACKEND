@@ -7,10 +7,11 @@ import IngredientTranslationModel from '../models/IngredientTranslationModel.js'
 import TagService from './TagService.js';
 import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
 import LanguageService from './LanguageService.js';
-import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
+import { pickTranslation, MissingTranslationsError } from '../utils/translation.js';
 import { NUTRIENT_FIELDS, stripNutrients } from '../utils/nutrients.js';
 import { DICTIONARIES, UNIT_TO_GRAMS } from '../utils/const.js';
 import { isVisibleTo, assertOwnPrivate, NotFoundError, loadAuthors, loadAuthor, toNonNegativeNumber } from '../utils/ownership.js';
+import { groupBy } from '../utils/helpers.js';
 
 const BASE_FIELDS = ['image_url', 'servings'];
 const TRANSLATION_FIELDS = ['name', 'description', 'cook_time', 'steps'];
@@ -201,51 +202,85 @@ export default class RecipeService {
     const recipe = await RecipeService.getById(id);
     if (viewerId !== undefined && !isVisibleTo(recipe, viewerId)) throw new NotFoundError('Recipe not found');
 
-    const translations = await RecipeTranslationModel.getByRecipeId(id);
-    if (!translations.length) throw new MissingTranslationsError('Recipe has no translations');
-    const defaultLang = await LanguageService.getDefaultCode();
-    const translation = pickTranslation(translations, lang, defaultLang);
+    const [full] = await RecipeService.resolveMany([recipe], lang, { includeNutrition });
+    if (!full) throw new MissingTranslationsError('Recipe has no translations');
+    return full;
+  }
 
-    const composition = await RecipeIngredientModel.getByRecipeId(id);
-    const ingredientIds = composition.map(row => row.f.ingredient_id);
-    const ingredients = await IngredientModel.getByIds(ingredientIds);
+  // Собирает ответы для списка строк recipe пакетно: переводы, состав,
+  // ингредиенты состава и их названия, теги — по одному запросу на таблицу
+  // независимо от длины списка (раньше — ~12 запросов на КАЖДЫЙ рецепт).
+  // Порядок сохраняется; рецепты без единого перевода пропускаются.
+  static async resolveMany(recipes, lang, { includeNutrition = true } = {}) {
+    if (!recipes.length) return [];
+    const ids = recipes.map(recipe => recipe.f.id);
+
+    const [translations, composition, recipeTags, defaultLang] = await Promise.all([
+      RecipeTranslationModel.getByRecipeIds(ids),
+      RecipeIngredientModel.getByRecipeIds(ids),
+      RecipeTagModel.getByRecipeIds(ids),
+      LanguageService.getDefaultCode()
+    ]);
+
+    const ingredientIds = [...new Set(composition.map(row => row.f.ingredient_id))];
+    const [ingredients, ingredientTranslations, tags] = await Promise.all([
+      IngredientModel.getByIds(ingredientIds),
+      IngredientTranslationModel.getByIngredientIds(ingredientIds),
+      TagService.getManyResolved([...new Set(recipeTags.map(rt => rt.f.tag_id))], lang)
+    ]);
+
     const ingredientsById = new Map(ingredients.map(ing => [ing.f.id, ing]));
-    const ingredientNames = await resolveIngredientNames(ingredientIds, lang);
+    const ingredientTranslationsById = groupBy(ingredientTranslations, t => t.f.ingredient_id);
+    const ingredientNames = new Map(ingredientIds.map(id => [
+      id,
+      pickTranslation(ingredientTranslationsById.get(id) || [], lang, defaultLang)?.f.name || null
+    ]));
 
-    const recipeTags = await RecipeTagModel.getByRecipeId(id);
-    const tags = await TagService.getManyResolved(recipeTags.map(rt => rt.f.tag_id), lang);
+    const translationsById = groupBy(translations, t => t.f.recipe_id);
+    const compositionById = groupBy(composition, row => row.f.recipe_id);
+    const tagIdsById = groupBy(recipeTags, rt => rt.f.recipe_id);
 
-    let nutrition;
-    if (includeNutrition) {
-      const servings = recipe.f.servings || 1;
-      const total = sumNutrition(composition, ingredientsById);
-      const perServing = {};
-      for (const field of NUTRIENT_FIELDS) {
-        perServing[field] = round2(total[field] / servings);
-        total[field] = round2(total[field]);
+    const result = [];
+    for (const recipe of recipes) {
+      const own = translationsById.get(recipe.f.id);
+      if (!own) continue;
+      const translation = pickTranslation(own, lang, defaultLang);
+      const rows = compositionById.get(recipe.f.id) || [];
+      const tagIds = new Set((tagIdsById.get(recipe.f.id) || []).map(rt => rt.f.tag_id));
+
+      let nutrition;
+      if (includeNutrition) {
+        const servings = recipe.f.servings || 1;
+        const total = sumNutrition(rows, ingredientsById);
+        const perServing = {};
+        for (const field of NUTRIENT_FIELDS) {
+          perServing[field] = round2(total[field] / servings);
+          total[field] = round2(total[field]);
+        }
+        nutrition = { total, perServing };
       }
-      nutrition = { total, perServing };
-    }
 
-    return {
-      ...recipe.toJSON(),
-      name: translation.f.name,
-      description: translation.f.description,
-      cook_time: translation.f.cook_time,
-      steps: translation.f.steps,
-      language: translation.f.language_code,
-      availableLanguages: translations.map(t => t.f.language_code),
-      ingredients: composition.map(row => {
-        const ingredient = { ...ingredientsById.get(row.f.ingredient_id)?.toJSON(), name: ingredientNames.get(row.f.ingredient_id) };
-        return {
-          ingredient: includeNutrition ? ingredient : stripNutrients(ingredient),
-          quantity: row.f.quantity,
-          unit: row.f.unit
-        };
-      }),
-      tags,
-      ...(nutrition ? { nutrition } : {})
-    };
+      result.push({
+        ...recipe.toJSON(),
+        name: translation.f.name,
+        description: translation.f.description,
+        cook_time: translation.f.cook_time,
+        steps: translation.f.steps,
+        language: translation.f.language_code,
+        availableLanguages: own.map(t => t.f.language_code),
+        ingredients: rows.map(row => {
+          const ingredient = { ...ingredientsById.get(row.f.ingredient_id)?.toJSON(), name: ingredientNames.get(row.f.ingredient_id) };
+          return {
+            ingredient: includeNutrition ? ingredient : stripNutrients(ingredient),
+            quantity: row.f.quantity,
+            unit: row.f.unit
+          };
+        }),
+        tags: tags.filter(tag => tagIds.has(tag.id)),
+        ...(nutrition ? { nutrition } : {})
+      });
+    }
+    return result;
   }
 
   // Для формы редактирования в админке — все переводы сразу (+ автор и
@@ -300,13 +335,13 @@ export default class RecipeService {
   static async getAll(search, lang, viewerId = null) {
     const ids = search ? await RecipeTranslationModel.searchRecipeIds(search) : null;
     const recipes = await RecipeModel.getVisible(viewerId, ids);
-    return resolveAll(recipes, recipe => RecipeService.getFullById(recipe.f.id, lang));
+    return RecipeService.resolveMany(recipes, lang);
   }
 
   // Свои рецепты пользователя приложения (личные и уже добавленные в каталог).
   static async getOwn(userId, lang) {
     const recipes = await RecipeModel.getByUserId(userId);
-    return resolveAll(recipes, recipe => RecipeService.getFullById(recipe.f.id, lang));
+    return RecipeService.resolveMany(recipes, lang);
   }
 
   // Для админки — рецепты, созданные пользователями, с автором и списком
@@ -314,15 +349,15 @@ export default class RecipeService {
   static async getUserCreated(status = 'pending', search, lang) {
     const ids = search ? await RecipeTranslationModel.searchRecipeIds(search) : null;
     const recipes = await RecipeModel.getUserCreated(status, ids);
-    const authors = await loadAuthors(recipes);
+    const [authors, resolved] = await Promise.all([loadAuthors(recipes), RecipeService.resolveMany(recipes, lang)]);
 
-    return resolveAll(recipes, async recipe => {
-      const full = await RecipeService.getFullById(recipe.f.id, lang);
-      const privateIngredients = full.ingredients
+    return resolved.map(full => ({
+      ...full,
+      author: authors.get(full.user_id) || null,
+      privateIngredients: full.ingredients
         .filter(item => item.ingredient.is_public === false)
-        .map(item => ({ id: item.ingredient.id, name: item.ingredient.name }));
-      return { ...full, author: authors.get(recipe.f.user_id) || null, privateIngredients };
-    });
+        .map(item => ({ id: item.ingredient.id, name: item.ingredient.name }))
+    }));
   }
 
   static async update(id, baseUpdates, ingredients, tagIds) {

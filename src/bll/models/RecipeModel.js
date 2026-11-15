@@ -83,6 +83,19 @@ export default class RecipeModel extends PgObject {
     );
   }
 
+  // Map ingredient_id -> в скольких не удалённых рецептах он используется.
+  static async countByIngredientIds(ingredientIds) {
+    if (!ingredientIds.length) return new Map();
+    const result = await RecipeModel.query(
+      `SELECT ri.ingredient_id, COUNT(*)::int AS n
+       FROM recipe_ingredient ri JOIN recipe r ON r.id = ri.recipe_id
+       WHERE r.deleted_at IS NULL AND ri.ingredient_id = ANY($1)
+       GROUP BY ri.ingredient_id`,
+      [ingredientIds]
+    );
+    return new Map(result.rows.map(row => [row.ingredient_id, row.n]));
+  }
+
   // КБЖУ и названия ингредиентов в ответе рецепта считаются на лету из
   // ингредиентов — после их изменения рецепты должны снова уйти в /app/sync.
   static async touchByIngredientId(ingredientId) {

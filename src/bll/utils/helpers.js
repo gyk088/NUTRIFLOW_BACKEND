@@ -19,3 +19,17 @@ export function fileExt(name) {
 export function cutStr(str, n) {
   return str && str.length > n ? str.slice(0, n) + '...' : str
 }
+
+// Группирует массив в Map<ключ, элементы[]>, сохраняя исходный порядок —
+// для пакетной сборки списков (одним запросом на таблицу вместо запросов на
+// каждую запись).
+export function groupBy(items, keyOf) {
+  const map = new Map();
+  for (const item of items) {
+    const key = keyOf(item);
+    const list = map.get(key);
+    if (list) list.push(item);
+    else map.set(key, [item]);
+  }
+  return map;
+}

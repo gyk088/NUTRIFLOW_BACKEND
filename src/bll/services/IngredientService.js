@@ -6,10 +6,11 @@ import RecipeTranslationModel from '../models/RecipeTranslationModel.js';
 import TagService from './TagService.js';
 import DictionaryUpdateModel from '../models/DictionaryUpdateModel.js';
 import LanguageService from './LanguageService.js';
-import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
+import { pickTranslation, MissingTranslationsError } from '../utils/translation.js';
 import { NUTRIENT_FIELDS, stripNutrients } from '../utils/nutrients.js';
 import { DICTIONARIES, MEASURE_UNITS, UNIT_TO_GRAMS } from '../utils/const.js';
 import { isVisibleTo, assertOwnPrivate, NotFoundError, loadAuthors, loadAuthor, toNonNegativeNumber } from '../utils/ownership.js';
+import { groupBy } from '../utils/helpers.js';
 
 const UPDATABLE_FIELDS = ['image_url', 'grams_per_unit', 'default_unit', ...NUTRIENT_FIELDS];
 
@@ -139,24 +140,47 @@ export default class IngredientService {
     const ingredient = await IngredientService.getById(id);
     if (viewerId !== undefined && !isVisibleTo(ingredient, viewerId)) throw new NotFoundError('Ingredient not found');
 
-    const translations = await IngredientTranslationModel.getByIngredientId(id);
-    if (!translations.length) throw new MissingTranslationsError('Ingredient has no translations');
+    const [full] = await IngredientService.resolveMany([ingredient], lang, { includeNutrition });
+    if (!full) throw new MissingTranslationsError('Ingredient has no translations');
+    return full;
+  }
 
-    const defaultLang = await LanguageService.getDefaultCode();
-    const translation = pickTranslation(translations, lang, defaultLang);
+  // Собирает ответы для списка строк ingredient пакетно: по одному запросу на
+  // переводы, связи с тегами и сами теги — независимо от длины списка
+  // (раньше — ~8 запросов на КАЖДЫЙ ингредиент). Порядок сохраняется;
+  // ингредиенты без единого перевода пропускаются (показать их нечем).
+  static async resolveMany(ingredients, lang, { includeNutrition = true } = {}) {
+    if (!ingredients.length) return [];
+    const ids = ingredients.map(ingredient => ingredient.f.id);
 
-    const ingredientTags = await IngredientTagModel.getByIngredientId(id);
-    const tags = await TagService.getManyResolved(ingredientTags.map(it => it.f.tag_id), lang);
+    const [translations, links, defaultLang] = await Promise.all([
+      IngredientTranslationModel.getByIngredientIds(ids),
+      IngredientTagModel.getByIngredientIds(ids),
+      LanguageService.getDefaultCode()
+    ]);
+    const tags = await TagService.getManyResolved([...new Set(links.map(link => link.f.tag_id))], lang);
 
-    const full = {
-      ...ingredient.toJSON(),
-      name: translation.f.name,
-      description: translation.f.description,
-      language: translation.f.language_code,
-      availableLanguages: translations.map(t => t.f.language_code),
-      tags
-    };
-    return includeNutrition ? full : stripNutrients(full);
+    const translationsById = groupBy(translations, t => t.f.ingredient_id);
+    const tagIdsById = groupBy(links, link => link.f.ingredient_id);
+
+    const result = [];
+    for (const ingredient of ingredients) {
+      const own = translationsById.get(ingredient.f.id);
+      if (!own) continue;
+      const translation = pickTranslation(own, lang, defaultLang);
+      const tagIds = new Set((tagIdsById.get(ingredient.f.id) || []).map(link => link.f.tag_id));
+
+      const full = {
+        ...ingredient.toJSON(),
+        name: translation.f.name,
+        description: translation.f.description,
+        language: translation.f.language_code,
+        availableLanguages: own.map(t => t.f.language_code),
+        tags: tags.filter(tag => tagIds.has(tag.id))
+      };
+      result.push(includeNutrition ? full : stripNutrients(full));
+    }
+    return result;
   }
 
   // Для формы редактирования в админке — все переводы сразу (+ автор, если
@@ -178,13 +202,13 @@ export default class IngredientService {
   static async getAll(search, lang, viewerId = null) {
     const ids = search ? await IngredientTranslationModel.searchIngredientIds(search) : null;
     const ingredients = await IngredientModel.getVisible(viewerId, ids);
-    return resolveAll(ingredients, ingredient => IngredientService.getFullById(ingredient.f.id, lang));
+    return IngredientService.resolveMany(ingredients, lang);
   }
 
   // Свои ингредиенты пользователя приложения (личные и уже добавленные в каталог).
   static async getOwn(userId, lang) {
     const ingredients = await IngredientModel.getByUserId(userId);
-    return resolveAll(ingredients, ingredient => IngredientService.getFullById(ingredient.f.id, lang));
+    return IngredientService.resolveMany(ingredients, lang);
   }
 
   // Для админки — ингредиенты, созданные пользователями, с автором и тем, в
@@ -192,13 +216,17 @@ export default class IngredientService {
   static async getUserCreated(status = 'pending', search, lang) {
     const ids = search ? await IngredientTranslationModel.searchIngredientIds(search) : null;
     const ingredients = await IngredientModel.getUserCreated(status, ids);
-    const authors = await loadAuthors(ingredients);
+    const [authors, usage, resolved] = await Promise.all([
+      loadAuthors(ingredients),
+      RecipeModel.countByIngredientIds(ingredients.map(i => i.f.id)),
+      IngredientService.resolveMany(ingredients, lang)
+    ]);
 
-    return resolveAll(ingredients, async ingredient => {
-      const full = await IngredientService.getFullById(ingredient.f.id, lang);
-      const recipes = await RecipeModel.getByIngredientId(ingredient.f.id);
-      return { ...full, author: authors.get(ingredient.f.user_id) || null, recipesCount: recipes.length };
-    });
+    return resolved.map(full => ({
+      ...full,
+      author: authors.get(full.user_id) || null,
+      recipesCount: usage.get(full.id) || 0
+    }));
   }
 
   static async update(id, updates, tagIds) {

@@ -4,7 +4,6 @@ import TagModel from '../models/TagModel.js';
 import IngredientService from './IngredientService.js';
 import RecipeService from './RecipeService.js';
 import TagService from './TagService.js';
-import { resolveAll } from '../utils/translation.js';
 
 export default class CatalogSyncService {
   // `since` — ISO-дата последней синхронизации на клиенте, либо null/undefined
@@ -32,8 +31,8 @@ export default class CatalogSyncService {
     ]);
 
     const [ingredients, recipes, tags] = await Promise.all([
-      resolveAll(changedIngredients, ingredient => IngredientService.getFullById(ingredient.f.id, lang)),
-      resolveAll(changedRecipes, recipe => RecipeService.getFullById(recipe.f.id, lang, { includeNutrition: !isGuest })),
+      IngredientService.resolveMany(changedIngredients, lang),
+      RecipeService.resolveMany(changedRecipes, lang, { includeNutrition: !isGuest }),
       TagService.getManyResolved(changedTags.map(tag => tag.f.id), lang)
     ]);
 
