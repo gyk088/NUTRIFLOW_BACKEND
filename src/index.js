@@ -112,7 +112,23 @@ function connectToDatabase() {
     port: process.env.DB_PORT,
   });
   PgObject.setClient(client);
-  PgObject.setLog(true);
+  // Лог запросов pgobject пишет и значения параметров (токены сессий, хэши
+  // паролей) — в продакшене выключен.
+  PgObject.setLog(false);
+
+  // С выключенным логом pgobject 3 не логирует и ошибки SQL, а контроллеры
+  // отвечают 400 без записи в лог. Логируем ошибки сами — только текст
+  // запроса, без значений. Все запросы моделей (select/insert/update/delete/
+  // query) идут через PgObject.query.
+  const query = PgObject.query;
+  PgObject.query = async function (queryStr, values, classObj) {
+    try {
+      return await query.call(this, queryStr, values, classObj);
+    } catch (error) {
+      fastify.log.error({ err: error, sql: queryStr }, 'SQL error');
+      throw error;
+    }
+  };
 }
 
 const start = async () => {
