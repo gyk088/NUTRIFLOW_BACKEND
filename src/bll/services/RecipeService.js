@@ -85,20 +85,13 @@ async function resolveIngredientNames(ingredientIds, lang) {
 }
 
 async function saveComposition(recipeId, ingredients, tagIds) {
-  for (const item of ingredients) {
-    const link = new RecipeIngredientModel({
-      recipe_id: recipeId,
-      ingredient_id: item.ingredient_id,
-      quantity: item.quantity,
-      unit: item.unit || 'g'
-    });
-    await link.save();
-  }
-
-  for (const tagId of tagIds) {
-    const link = new RecipeTagModel({ recipe_id: recipeId, tag_id: tagId });
-    await link.save();
-  }
+  await RecipeIngredientModel.insertMany(ingredients.map(item => ({
+    recipe_id: recipeId,
+    ingredient_id: item.ingredient_id,
+    quantity: item.quantity,
+    unit: item.unit || 'g'
+  })));
+  await RecipeTagModel.insertMany(tagIds.map(tagId => ({ recipe_id: recipeId, tag_id: tagId })));
 }
 
 function pickBase(data) {
@@ -473,22 +466,28 @@ export default class RecipeService {
     const composition = await RecipeIngredientModel.getByRecipeId(id);
     const ingredients = await IngredientModel.getByIds(composition.map(row => row.f.ingredient_id));
 
-    const publishedIngredientIds = [];
-    for (const ingredient of ingredients) {
-      if (ingredient.f.is_public) continue;
+    const now = new Date();
+    const toPublish = ingredients.filter(ingredient => !ingredient.f.is_public);
+    for (const ingredient of toPublish) {
       ingredient.f.is_public = true;
-      ingredient.f.published_at = new Date();
-      await ingredient.save();
-      publishedIngredientIds.push(ingredient.f.id);
+      ingredient.f.published_at = now;
+      ingredient.f.utime = now; // updateMany doesn't call the model's update()
     }
-    if (publishedIngredientIds.length) await DictionaryUpdateModel.touch(DICTIONARIES.INGREDIENT);
+    const publishedIngredientIds = toPublish.map(ingredient => ingredient.f.id);
 
-    if (!recipe.f.is_public) {
-      recipe.f.is_public = true;
-      recipe.f.published_at = new Date();
-      await recipe.save();
-      await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
-    }
+    // рецепт и его ингредиенты публикуются вместе или не публикуются вовсе
+    await RecipeModel.createTransaction(async () => {
+      if (toPublish.length) {
+        await IngredientModel.updateMany(toPublish);
+        await DictionaryUpdateModel.touch(DICTIONARIES.INGREDIENT);
+      }
+      if (!recipe.f.is_public) {
+        recipe.f.is_public = true;
+        recipe.f.published_at = now;
+        await recipe.save();
+        await DictionaryUpdateModel.touch(DICTIONARIES.RECIPE);
+      }
+    });
 
     return { ...(await RecipeService.getAdminDetail(id)), publishedIngredientIds };
   }

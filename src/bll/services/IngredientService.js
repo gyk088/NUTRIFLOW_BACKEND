@@ -66,10 +66,7 @@ function validateName(name) {
 }
 
 async function saveTags(ingredientId, tagIds) {
-  for (const tagId of tagIds) {
-    const link = new IngredientTagModel({ ingredient_id: ingredientId, tag_id: tagId });
-    await link.save();
-  }
+  await IngredientTagModel.insertMany(tagIds.map(tagId => ({ ingredient_id: ingredientId, tag_id: tagId })));
 }
 
 // Название/описание на одном языке: обновляет существующий перевод или

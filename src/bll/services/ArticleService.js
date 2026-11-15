@@ -7,10 +7,7 @@ import LanguageService from './LanguageService.js';
 import { pickTranslation, MissingTranslationsError, resolveAll } from '../utils/translation.js';
 
 async function saveTags(articleId, tagIds) {
-  for (const tagId of tagIds) {
-    const link = new ArticleTagModel({ article_id: articleId, tag_id: tagId });
-    await link.save();
-  }
+  await ArticleTagModel.insertMany(tagIds.map(tagId => ({ article_id: articleId, tag_id: tagId })));
 }
 
 export default class ArticleService {

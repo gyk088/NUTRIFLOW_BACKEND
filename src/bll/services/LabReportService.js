@@ -49,24 +49,22 @@ export default class LabReportService {
       report.f.status = 'done';
       await report.save();
 
-      for (const result of parsed.results || []) {
-        const row = new LabResultModel({
-          report_id: report.f.id,
-          name: result.name,
-          value: result.value,
-          value_numeric: result.value_numeric ?? null,
-          unit: result.unit || null,
-          ref_range: result.ref_range || null,
-          ref_min: result.ref_min ?? null,
-          ref_max: result.ref_max ?? null,
-          flag: result.flag || null,
-          description: result.description || null,
-          low_effects: result.low_effects || null,
-          high_effects: result.high_effects || null,
-          food_sources: JSON.stringify(Array.isArray(result.food_sources) ? result.food_sources : [])
-        });
-        await row.save();
-      }
+      // все показатели одним INSERT: либо сохранены все, либо ни одного
+      await LabResultModel.insertMany((parsed.results || []).map(result => ({
+        report_id: report.f.id,
+        name: result.name,
+        value: result.value,
+        value_numeric: result.value_numeric ?? null,
+        unit: result.unit || null,
+        ref_range: result.ref_range || null,
+        ref_min: result.ref_min ?? null,
+        ref_max: result.ref_max ?? null,
+        flag: result.flag || null,
+        description: result.description || null,
+        low_effects: result.low_effects || null,
+        high_effects: result.high_effects || null,
+        food_sources: JSON.stringify(Array.isArray(result.food_sources) ? result.food_sources : [])
+      })));
     } catch (error) {
       // Отчёт с оригиналом файла остаётся в базе даже при неудаче — чтобы не
       // заставлять пользователя перезагружать файл, если захотим когда-нибудь

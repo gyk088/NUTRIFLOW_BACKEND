@@ -27,21 +27,35 @@ export default class AppTranslationService {
     return dictionary;
   }
 
-  // Upserts every key/value in `dictionary` for `lang`. Sequential by design,
-  // same as the rest of the codebase's save-composition loops (see
-  // RecipeService.saveComposition) — simple over fast, this isn't hot path.
+  // Upserts every key/value in `dictionary` for `lang`. Rows of the language are
+  // loaded once; changed ones go in one UPDATE, new ones in one INSERT, together
+  // in a transaction — a failed save leaves the dictionary as it was.
   static async setDictionary(lang, dictionary) {
     await LanguageService.getByCode(lang); // throws if the language doesn't exist
+    if (!dictionary || typeof dictionary !== 'object' || Array.isArray(dictionary)) {
+      throw new Error('Body must be an object of key/value pairs');
+    }
 
+    const existingByKey = new Map((await AppTranslationModel.getByLanguage(lang)).map(row => [row.f.key, row]));
+    const changed = [];
+    const added = [];
+    const now = new Date();
     for (const [key, value] of Object.entries(dictionary)) {
-      const existing = await AppTranslationModel.getByLanguageAndKey(lang, key);
-      if (existing) {
+      const existing = existingByKey.get(key);
+      if (!existing) {
+        added.push({ language_code: lang, key, value });
+      } else if (existing.f.value !== value) {
         existing.f.value = value;
-        await existing.save();
-      } else {
-        const row = new AppTranslationModel({ language_code: lang, key, value });
-        await row.save();
+        existing.f.utime = now; // updateMany doesn't call the model's update()
+        changed.push(existing);
       }
+    }
+
+    if (changed.length || added.length) {
+      await AppTranslationModel.createTransaction(async () => {
+        await AppTranslationModel.updateMany(changed);
+        await AppTranslationModel.insertMany(added);
+      });
     }
 
     return AppTranslationService.getAdminDictionary(lang);
