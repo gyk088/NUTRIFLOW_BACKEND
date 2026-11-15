@@ -24,9 +24,9 @@ export default class IngredientModel extends PgObject {
     };
 
     // все нутриенты — NOT NULL DEFAULT 0 в БД, поэтому default в схему не
-    // добавляем: pgobject трактует default: 0 как falsy и не применяет его
-    // (см. __setStaticFields), а незаполненное поле просто не попадёт в
-    // INSERT и получит значение по умолчанию из самой БД.
+    // добавляем: незаполненное поле просто не попадёт в INSERT и получит
+    // значение по умолчанию из самой БД (pgobject 3 применил бы и default: 0,
+    // но дублировать умолчание БД здесь незачем).
     for (const field of NUTRIENT_FIELDS) {
       schema[field] = {};
     }

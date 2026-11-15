@@ -31,7 +31,7 @@
     "jose": "^6.2.12",
     "nodemailer": "^9.0.5",
     "pg": "^8.16.3",
-    "pgobject": "^2.0.12"
+    "pgobject": "^3.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
