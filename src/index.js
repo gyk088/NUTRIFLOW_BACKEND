@@ -12,6 +12,7 @@ import appLanguageRoutes from './routes/v1/app/languages/index.js'
 import appTranslationRoutes from './routes/v1/app/translations/index.js'
 import appDictionaryRoutes from './routes/v1/app/dictionaries/index.js'
 import appSyncRoutes from './routes/v1/app/sync/index.js'
+import appUserDataRoutes from './routes/v1/app/userData/index.js'
 import appFileRoutes from './routes/v1/app/files/index.js'
 // Для админ-панели — запись контента + управление пользователями (admin+/super_admin).
 import adminUserRoutes from './routes/v1/admin/users/index.js'
@@ -82,6 +83,7 @@ await fastify.register(fastifyView, {
 fastify.register(authRoutes, { prefix: '/api/v1/auth' })
 
 fastify.register(appUserRoutes, { prefix: '/api/v1/app/users' })
+fastify.register(appUserDataRoutes, { prefix: '/api/v1/app/user-data' })
 fastify.register(appIngredientRoutes, { prefix: '/api/v1/app/ingredients' })
 fastify.register(appRecipeRoutes, { prefix: '/api/v1/app/recipes' })
 fastify.register(appArticleRoutes, { prefix: '/api/v1/app/articles' })
