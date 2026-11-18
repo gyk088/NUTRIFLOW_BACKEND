@@ -5,7 +5,7 @@ import UserEntryModel from '../models/UserEntryModel.js';
 // приложение. Протокол как у /app/sync каталога: клиент присылает изменения
 // пачкой и забирает дельту по `since` (syncedAt из прошлого ответа).
 
-export const ENTRY_KINDS = ['food_log', 'water', 'favorite'];
+export const ENTRY_KINDS = ['food_log', 'water', 'favorite', 'fast', 'setting'];
 const MAX_BATCH = 500;
 const MAX_ID_LENGTH = 100;
 const MAX_DATA_BYTES = 8 * 1024;
